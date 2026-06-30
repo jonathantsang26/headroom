@@ -1,0 +1,7 @@
+request_id,near_bus,mw,fuel
+QUEUE_1,BUS_1,350,wind
+QUEUE_2,BUS_4,600,wind
+QUEUE_3,BUS_8,200,solar
+QUEUE_4,BUS_5,150,solar
+QUEUE_5,BUS_7,400,wind
+QUEUE_6,BUS_6,250,wind

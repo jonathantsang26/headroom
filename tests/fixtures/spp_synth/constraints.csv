@@ -1,0 +1,11 @@
+constraint_id,monitored_line,contingency_line,ctype
+FLOWGATE_1,LINE_2,LINE_1,thermal
+FLOWGATE_2,LINE_2,LINE_10,thermal
+FLOWGATE_3,LINE_5,LINE_9,thermal
+FLOWGATE_4,LINE_4,LINE_3,loopflow
+FLOWGATE_5,LINE_6,LINE_5,thermal
+FLOWGATE_6,LINE_7,LINE_11,thermal
+FLOWGATE_7,LINE_3,LINE_4,loopflow
+FLOWGATE_8,LINE_8,LINE_9,thermal
+FLOWGATE_9,LINE_1,LINE_9,interface
+FLOWGATE_10,LINE_11,LINE_7,thermal

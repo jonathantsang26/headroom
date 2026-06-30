@@ -25,7 +25,7 @@ class Compliance(BaseModel):
 
 class SourceSpec(BaseModel):
     name: str
-    bucket: Literal["a", "b"]
+    bucket: Literal["a", "b", "meta"]  # "meta" = non-data source (e.g. synthetic)
     tier: int | str
     kind: str = ""
     gives: str = ""

@@ -1,0 +1,5 @@
+constraint_id,plan,proposed_fix,assigned_cost_musd
+FLOWGATE_3,ITP,Rebuild LINE_5 as 345kV double-circuit,145
+FLOWGATE_1,FCA,Reconductor LINE_2 with HTLS,60
+FLOWGATE_8,ITP,New 345kV line parallel to LINE_8,210
+FLOWGATE_5,FCA,Series compensation on LINE_6,35

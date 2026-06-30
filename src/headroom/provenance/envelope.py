@@ -40,6 +40,12 @@ class _Enveloped(BaseModel):
     source_version: str
     lineage_id: str
     inputs: list[str] = Field(default_factory=list)
+    # `source` records ACTUAL provenance (what the gate trusts). `provider` records
+    # the *nominal* origin a value imitates — None in a real run; the real source name
+    # (e.g. "hifld_transmission") for a synthetic fixture whose true source is
+    # "synthetic_fixture". Triangulation keys on `provider or source` so cross-source
+    # agreement still works under synthetic data, while the gate sees only `source`.
+    provider: str | None = None
 
 
 class Fact(_Enveloped):
@@ -73,3 +79,24 @@ class Range(_Enveloped):
                 f"lo={self.lo}, expected={self.expected}, hi={self.hi}"
             )
         return self
+
+    def sample(self, rng) -> float:
+        """Draw one value from the range's distribution. `rng` MUST be a seeded
+        numpy Generator (the seed is recorded in the run manifest, so a pinned
+        re-run reproduces identical draws — §8 reproducibility). A degenerate
+        range (lo == hi) returns its point value."""
+        if self.lo == self.hi:
+            return float(self.lo)
+        if self.dist == "uniform":
+            return float(rng.uniform(self.lo, self.hi))
+        if self.dist == "lognormal" and self.lo > 0 and self.expected > 0:
+            import math
+
+            mu = math.log(self.expected)
+            # Treat [lo, hi] as a ~p5..p95 span to back out sigma.
+            sigma = (math.log(self.hi) - math.log(self.lo)) / (2 * 1.645)
+            if sigma <= 0:
+                return float(self.expected)
+            return float(rng.lognormal(mean=mu, sigma=sigma))
+        # triangular (default, and the lognormal fallback)
+        return float(rng.triangular(self.lo, self.expected, self.hi))

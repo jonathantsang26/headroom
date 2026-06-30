@@ -1,0 +1,13 @@
+snapshot,ba,load_mw
+peak,SPS,2200
+peak,WFEC,800
+peak,OKGE,1500
+offpeak,SPS,1200
+offpeak,WFEC,400
+offpeak,OKGE,800
+shoulder,SPS,1700
+shoulder,WFEC,600
+shoulder,OKGE,1100
+windhigh,SPS,1500
+windhigh,WFEC,700
+windhigh,OKGE,1000

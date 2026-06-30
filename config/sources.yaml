@@ -124,6 +124,24 @@ sources:
       basis: "SPP publishes the interconnection queue."
       notes: "demand_pressure signal."
 
+  # ---- Meta: fabricated test/demo data (NEVER publishable) ----
+  # All fixture-derived values carry source: synthetic_fixture, so the lineage-walk
+  # export gate refuses to emit a synthetic shortlist under public_only=True. A
+  # synthetic run can only produce an INTERNAL (public_only=False) export. The
+  # imitated real source is recorded in each value's `provider` field for
+  # triangulation. This is what makes building on fabricated data safe.
+  - name: synthetic_fixture
+    bucket: meta
+    tier: synthetic
+    kind: fixture
+    gives: "Fabricated SPP-SYNTH data for offline tests/demos"
+    access: "tests/fixtures + data/raw (committed)"
+    source_version: "synthetic"
+    compliance:
+      publishable: false
+      basis: "Fabricated data. Not real observations; never publishable."
+      notes: "Imitated real source is in each value's `provider` field."
+
   # ---- Quarantined non-public tier (present, but NEVER in a public export) ----
   # Example CEII source. Not used in v1. Listed so the lineage-walk gate has a
   # real non-publishable source to enforce against, and so adding CEII later is a

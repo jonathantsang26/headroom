@@ -9,6 +9,8 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2",
     "pyyaml>=6",
+    "numpy>=1.26",   # DC/PTDF screen + Monte-Carlo rank stability
+    "duckdb>=1",     # materialize queryable Parquet outputs
 ]
 
 [project.optional-dependencies]
