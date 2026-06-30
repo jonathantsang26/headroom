@@ -1,0 +1,144 @@
+# Headroom — single source registry.
+#
+# Every source declares: bucket (a = present-but-dirty, b = absent/reconstructed),
+# tier, a pinned source_version, and a `compliance` block. The compliance block is
+# FAIL-CLOSED: `publishable` defaults to False when absent (see sources/registry.py),
+# so a source is non-publishable until proven otherwise.
+#
+# `publishable: true`  -> public data, may appear in any shareable export.
+# `publishable: false` -> may be fetched/stored and used INTERNALLY, but the
+#                          lineage-walk export gate refuses to emit any value whose
+#                          provenance transitively touches it under public_only=True.
+#                          (CEII lives here. See provenance/gate.py.)
+#
+# Pilot region: SPP (see plan — fastest path to a defensible end-to-end loop).
+
+sources:
+  # ---- Bucket A: present-but-dirty (corroborate + validate) ----
+  - name: pudl_ferc_form1
+    bucket: a
+    tier: 1
+    kind: parquet
+    gives: "Transmission asset inventory, line stats (pg 422), plant cost, O&M"
+    access: "PUDL Parquet on S3"
+    source_version: "pudl_v2024.11.0"
+    compliance:
+      publishable: true
+      basis: "FERC Form 1 is a public filing; PUDL redistributes under CC-BY."
+      notes: "Pinned PUDL release; never nightly for a shareable run."
+
+  - name: eia_860_861
+    bucket: a
+    tier: 1
+    kind: bulk
+    gives: "Plant locations, utility operations, ownership"
+    access: "EIA bulk download"
+    source_version: "eia_2024_early_release"
+    compliance:
+      publishable: true
+      basis: "EIA survey data is public domain (US gov)."
+      notes: ""
+
+  - name: hifld_transmission
+    bucket: a
+    tier: 3
+    kind: gis
+    gives: "Line geometry, voltages, substations"
+    access: "Open GIS (HIFLD / EIA transmission layers)"
+    source_version: "hifld_2024Q4"
+    compliance:
+      publishable: true
+      basis: "HIFLD Open is public; transmission lines layer is openly licensed."
+      notes: "Confirm the layer used is HIFLD Open, not the secured HIFLD tier."
+
+  - name: eia_930
+    bucket: a            # A-typed input that feeds the Bucket-B PTDF screen
+    tier: 1
+    kind: api
+    gives: "Hourly load & interchange by balancing authority"
+    access: "EIA API (key CENSUS/EIA via env var; works for public series)"
+    source_version: "eia930_2024"
+    compliance:
+      publishable: true
+      basis: "EIA-930 is public domain (US gov)."
+      notes: ""
+
+  # ---- Bucket B: absent (reconstruct from shadows / physics / exhaust) ----
+  - name: spp_marketplace_lmp
+    bucket: b
+    tier: 1
+    kind: api
+    gives: "Nodal LMP -> congestion component"
+    access: "SPP Integrated Marketplace public data (SPP Portal)"
+    source_version: "spp_portal_2025-06"
+    compliance:
+      publishable: true
+      basis: "SPP posts Integrated Marketplace data publicly on the SPP Portal."
+      notes: ""
+
+  - name: spp_binding_constraints
+    bucket: b
+    tier: 1
+    kind: api
+    gives: "Per-binding-constraint monthly cost of congestion (DA market)"
+    access: "SPP Portal monthly congestion summary"
+    source_version: "spp_portal_2025-06"
+    compliance:
+      publishable: true
+      basis: "Public monthly congestion-cost-by-constraint summary on the SPP Portal."
+      notes: "Core §6.1 congestion-rent signal, partly pre-computed by SPP."
+
+  - name: spp_fca
+    bucket: b
+    tier: 3
+    kind: report
+    gives: "Frequently Constrained Areas — named, where the system binds"
+    access: "SPP FCA study (PDF)"
+    source_version: "fca_2024_2025-09"
+    compliance:
+      publishable: true
+      basis: "Published SPP engineering study."
+      notes: "§6.3 planning-exhaust ground truth."
+
+  - name: spp_itp
+    bucket: b
+    tier: 3
+    kind: report
+    gives: "ITP named constraints + proposed fixes + assigned costs"
+    access: "SPP ITP Assessment report (PDF)"
+    source_version: "itp_2024_v1.0"
+    compliance:
+      publishable: true
+      basis: "Published SPP Integrated Transmission Planning assessment."
+      notes: "§6.3 planning items -> planning_items table."
+
+  - name: spp_queue
+    bucket: b
+    tier: 3
+    kind: export
+    gives: "Where developers seek headroom; assigned upgrade costs"
+    access: "SPP generator interconnection queue"
+    source_version: "spp_giq_2025-06"
+    compliance:
+      publishable: true
+      basis: "SPP publishes the interconnection queue."
+      notes: "demand_pressure signal."
+
+  # ---- Quarantined non-public tier (present, but NEVER in a public export) ----
+  # Example CEII source. Not used in v1. Listed so the lineage-walk gate has a
+  # real non-publishable source to enforce against, and so adding CEII later is a
+  # config change, not an architecture change. (Decision 5.)
+  - name: ferc_form_715
+    bucket: b
+    tier: x
+    kind: ceii
+    gives: "Power-flow base cases (impedances, full topology)"
+    access: "FERC CEII request + NDA"
+    source_version: "ceii_unset"
+    compliance:
+      publishable: false
+      basis: "CEII — Critical Energy/Electric Infrastructure Information."
+      notes: >-
+        DO NOT publish or let flow into any shareable export. May be ingested and
+        used internally only; the lineage-walk export gate refuses anything whose
+        provenance transitively touches this source under public_only=True.

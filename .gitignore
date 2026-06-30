@@ -1,0 +1,22 @@
+# Headroom — never commit data, secrets, or environments
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Raw snapshots + processed parquet are large and/or version-pinned artifacts,
+# archived out-of-band (see provenance/versions.py), never in git.
+data/raw/
+data/interim/
+data/processed/
+*.parquet
+*.duckdb
+
+# Run manifests are reproducible from a pinned run; keep examples only.
+run_manifest.json
+
+# editable-install artifacts
+*.egg-info/
+src/*.egg-info/
+build/

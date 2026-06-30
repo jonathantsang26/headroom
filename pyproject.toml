@@ -1,0 +1,26 @@
+[project]
+name = "headroom"
+version = "0.0.0"
+description = "Vendor-neutral public-data screening layer that ranks transmission constraints by GETs-deployment value, with explicit confidence and uncertainty."
+requires-python = ">=3.11"
+# Phase 0 deliberately depends only on what the spine actually imports, so that
+# `pytest` runs with no network and no keys. Heavier deps (numpy, duckdb, polars,
+# geopandas, streamlit) are added in the phase that first needs them.
+dependencies = [
+    "pydantic>=2",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
