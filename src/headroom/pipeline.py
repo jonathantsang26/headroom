@@ -28,12 +28,13 @@ class PipelineResult:
 def run_pipeline(
     region_name: str,
     *,
+    scoring: ScoringConfig | None = None,
     scoring_path=None,
     registry: SourceRegistry | None = None,
 ) -> PipelineResult:
     store = LineageStore()
     registry = registry or load_registry()
-    scoring = ScoringConfig.load(scoring_path)
+    scoring = scoring or ScoringConfig.load(scoring_path)
 
     bundle = ingest_region(region_name, store)
     bucket_a = run_bucket_a(bundle, store)

@@ -51,6 +51,18 @@ class ScoringConfig:
             seed=int(s["seed"]),
         )
 
+    @classmethod
+    def from_manifest(cls, scoring: dict) -> "ScoringConfig":
+        """Rebuild the exact scoring config a manifest recorded, so a pinned run can
+        be reproduced identically (Phase-5 done-when)."""
+        return cls(
+            weights=scoring["weights"],
+            references=scoring["references"],
+            draws=int(scoring["draws"]),
+            top_fraction=float(scoring["top_fraction"]),
+            seed=int(scoring["seed"]),
+        )
+
 
 @dataclass
 class ModelResult:
