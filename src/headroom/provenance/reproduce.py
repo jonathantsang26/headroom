@@ -19,6 +19,13 @@ def reproduce_from_manifest(
     """Re-run the pipeline exactly as a manifest describes it."""
     if not isinstance(manifest, dict):
         manifest = json.loads(Path(manifest).read_text())
+    missing = [k for k in ("region", "scoring") if not manifest.get(k)]
+    if missing:
+        raise ValueError(
+            f"Manifest is not reproducible: missing {missing}. Only manifests written "
+            f"by export.deliver() (which record region + scoring) can be reproduced; "
+            f"the bare demo manifest cannot."
+        )
     region = manifest["region"]
     scoring = ScoringConfig.from_manifest(manifest["scoring"])
     return run_pipeline(region, scoring=scoring, registry=registry)

@@ -8,28 +8,6 @@ from headroom.provenance.lineage import LineageStore
 from headroom.provenance.synthetic import synthetic_range
 
 
-def composite_range(
-    cid: str, signals: dict[str, Range], weights: dict[str, float],
-    store: LineageStore | None = None,
-) -> Range:
-    """Deterministic composite Range for display: weighted sums of lo/expected/hi.
-    (The defensible uncertainty comes from the Monte-Carlo rank stability, which
-    re-samples each signal — this is just the headline band.)"""
-    lo = sum(weights[k] * signals[k].lo for k in weights)
-    exp = sum(weights[k] * signals[k].expected for k in weights)
-    hi = sum(weights[k] * signals[k].hi for k in weights)
-    rng = synthetic_range(
-        lo=lo, expected=exp, hi=hi,
-        basis="Weighted composite of normalized signal Ranges (weights in scoring.yaml).",
-        provider="model.score", lineage_id=f"composite:{cid}",
-        # composite inherits taint from its signal inputs:
-    )
-    rng.inputs = [signals[k].lineage_id for k in weights]
-    if store is not None:
-        store.add(rng)
-    return rng
-
-
 def composite_sample(signals: dict[str, Range], weights: dict[str, float], rng) -> float:
     """One Monte-Carlo draw of the composite: sample each signal's Range, weight, sum.
     `rng` is the seeded numpy Generator (seed in the manifest)."""

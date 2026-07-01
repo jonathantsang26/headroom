@@ -58,6 +58,8 @@ def test_get_match_signatures():
     assert by_id["FLOWGATE_4"].recommended_get == "Topology Optimization"  # loopflow
     assert by_id["FLOWGATE_7"].recommended_get == "Topology Optimization"  # loopflow
     assert by_id["FLOWGATE_9"].recommended_get == "Advanced Power Flow Control"  # interface
+    # heavy + persistent meshed thermal -> not a clean single-GET case
+    assert by_id["FLOWGATE_3"].recommended_get == "Combination"
 
 
 def test_footprint_dedup_to_corridors():

@@ -100,10 +100,18 @@ def _materialize_parquet(json_path: Path, parquet_path: Path) -> bool:
     # (internally-controlled) paths with quote-escaping.
     jp = str(json_path).replace("'", "''")
     pp = str(parquet_path).replace("'", "''")
-    con = duckdb.connect()
-    con.execute(f"COPY (SELECT * FROM read_json_auto('{jp}')) TO '{pp}' (FORMAT PARQUET)")
-    con.close()
-    return True
+    # Best-effort: a bad --out path or a COPY failure must not abort an otherwise
+    # successful delivery (JSON/CSV/manifest are already written), and must never
+    # leak the connection handle.
+    try:
+        with duckdb.connect() as con:
+            con.execute(
+                f"COPY (SELECT * FROM read_json_auto('{jp}')) "
+                f"TO '{pp}' (FORMAT PARQUET)"
+            )
+        return True
+    except Exception:  # pragma: no cover - depends on filesystem/DuckDB state
+        return False
 
 
 def deliver(

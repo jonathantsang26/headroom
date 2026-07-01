@@ -1,6 +1,8 @@
 """Phase 5: generalize (region-parameterized) + harden (pinned manifest reproduces
 a prior run exactly). Done-when for the whole project."""
 
+import pytest
+
 from headroom.export import deliver
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest, scores_fingerprint
@@ -62,3 +64,10 @@ def test_coverage_note_present_in_quality_report():
     assert "coverage_note" in result.bucket_a.quality_report
     # entities support the non-filer blind-spot flag
     assert all(b.coverage == "observed" for b in result.bucket_a.buses)
+
+
+def test_reproduce_rejects_manifest_without_scoring():
+    # A bare manifest (e.g. the demo's, which records no region/scoring) is not
+    # reproducible; it must fail with a clear error, not a bare KeyError.
+    with pytest.raises(ValueError, match="not reproducible"):
+        reproduce_from_manifest({"run_label": "x"})

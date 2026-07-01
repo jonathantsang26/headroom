@@ -20,6 +20,10 @@ def triangulate_voltage(
     """Combine independent voltage observations into one derived `Fact`. The result
     is a derived envelope (inputs = the observation lineage_ids), so the gate's
     taint walk reaches the underlying sources."""
+    if not observations:
+        raise ValueError(
+            f"triangulate_voltage({line_id!r}): no voltage observations to combine."
+        )
     values = [float(o.value) for o in observations]
     counts = Counter(values)
     chosen, top_n = counts.most_common(1)[0]

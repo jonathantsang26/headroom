@@ -84,6 +84,33 @@ def test_loadings_are_physically_plausible():
         assert rng.hi < 3.0  # no absurd radial-gen 5x overloads
 
 
+def test_empty_injections_does_not_crash_and_flags_every_constraint():
+    # No load snapshots -> no flows. The screen must still emit a Range per
+    # constraint (flag, never drop), not raise on min([])/max([]).
+    from headroom.reconstruct.network_model import (
+        attach_reactance,
+        build_dc_model,
+        screen_loadings,
+    )
+    from headroom.schema.entities import Constraint
+
+    store = LineageStore()
+    bundle = ingest_region("spp-synth", store)
+    a = run_bucket_a(bundle, store)
+    attach_reactance(a.lines, store)  # so the DC model can build
+    model = build_dc_model(a.buses, a.lines)
+    constraints = [
+        Constraint(
+            constraint_id=r["constraint_id"], monitored_line=r["monitored_line"],
+            contingency_line=r["contingency_line"] or None, ctype=r["ctype"],
+        )
+        for r in bundle.constraints
+    ]
+    loading, status = screen_loadings(model, a.lines_by_id, constraints, {}, store)
+    assert len(loading) == len(constraints)  # every constraint still gets a Range
+    assert all(status[c.constraint_id] == "no_base_flows" for c in constraints)
+
+
 def test_congestion_rent_annualized_and_keyed():
     _, bb = _bucket_b()
     # FLOWGATE_3: 3.6 $M/mo -> 43.2 $M/yr expected

@@ -84,6 +84,11 @@ def build_dc_model(
         x = float(ln.reactance_pu.expected) if ln.reactance_pu else estimate_reactance_pu(
             ln.length_mi, float(ln.voltage_kv.value)
         )
+        # A zero-length line or a bad (0 kV) voltage yields x == 0 -> infinite
+        # susceptance. Floor x so B' stays finite rather than dividing by zero deep
+        # in matrix construction; such a line is a data problem, not a short circuit.
+        if x <= 0:
+            x = 1e-6
         incidence[l, fi] = 1.0
         incidence[l, ti] = -1.0
         b[l] = 1.0 / x
@@ -217,6 +222,16 @@ def screen_loadings(
         thermal = float(thermal_fact.value)
 
         base = _loadings_over_snapshots(model, mon_idx, thermal, injections, ())
+        if not base:
+            # No usable base-case flows (no load snapshots, or the N-0 network itself
+            # is disconnected). Emit an indeterminate Range rather than crashing on
+            # min([])/max([]) — flag, never drop.
+            status[cid] = "no_base_flows"
+            loading[cid] = store.add(
+                _loading_range(cid, 0.0, 1.0, 2.0, store_basis="indeterminate: no "
+                "base-case flows (no snapshots or disconnected base network).")
+            )
+            continue
         if c.contingency_line:
             n1 = _loadings_over_snapshots(
                 model, mon_idx, thermal, injections, (c.contingency_line,)

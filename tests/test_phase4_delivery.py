@@ -66,6 +66,27 @@ def test_score_rows_are_ranked_and_complete():
         assert all(f"sig_{n}" in r for n in ("rent", "loading", "planning"))
 
 
+def test_mcp_refuses_non_shareable_scores(tmp_path):
+    # The MCP read boundary must honor the same public-only guarantee as export:
+    # serving a synthetic run's scores parquet is refused (before any fastmcp import).
+    from headroom.mcp.server import build_server
+
+    result = run_pipeline("spp-synth")
+    d = deliver(result, tmp_path)  # writes INTERNAL.synthetic artifacts
+    pq = d.paths["parquet"]  # scores.INTERNAL.synthetic.parquet
+    with pytest.raises(RuntimeError, match="shareable"):
+        build_server(pq)
+
+
+def test_mcp_refuses_when_no_manifest(tmp_path):
+    from headroom.mcp.server import build_server
+
+    lonely = tmp_path / "scores.parquet"
+    lonely.write_text("")  # a parquet with no sibling manifest -> fail closed
+    with pytest.raises(RuntimeError, match="no sibling run manifest"):
+        build_server(lonely)
+
+
 def test_parquet_is_written_and_queryable(tmp_path):
     result = run_pipeline("spp-synth")
     d = deliver(result, tmp_path)
