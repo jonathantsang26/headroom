@@ -15,6 +15,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+app = ["streamlit>=1.30", "pandas>=2"]   # Phase-4 map/table UI
+mcp = ["fastmcp>=0.1"]                    # deferred MCP server (Decision 2)
+
+[project.scripts]
+headroom = "headroom.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

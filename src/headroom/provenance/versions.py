@@ -21,12 +21,20 @@ def build_run_manifest(
     run_label: str,
     generated_at: datetime,
     public_only: bool = True,
+    scoring: dict | None = None,
+    region: str | None = None,
+    mode: str | None = None,
 ) -> dict:
-    """Snapshot the exact source versions a run depends on. `generated_at` is
-    passed in (not read from the clock) so a reproduction can stamp it
-    deterministically."""
-    return {
+    """Snapshot everything that determines a run's output: source versions AND the
+    scoring config (seed/weights/draws/top_fraction). Capturing scoring is what makes
+    the Phase-5 done-when ("a pinned manifest reproduces a prior run exactly")
+    satisfiable — the ranking is a function of these, so they must be recorded.
+    `generated_at` is passed in (not read from the clock) so a reproduction can stamp
+    it deterministically."""
+    manifest = {
         "run_label": run_label,
+        "region": region,
+        "mode": mode,  # "shareable" | "internal-synthetic"
         "generated_at": generated_at.isoformat(),
         "public_only": public_only,
         "pinned": {"pudl_release": PUDL_RELEASE},
@@ -40,6 +48,10 @@ def build_run_manifest(
             for spec in registry.all()
         },
     }
+    if scoring is not None:
+        # The exact knobs that determine the ranking (seed is the reproducibility key).
+        manifest["scoring"] = scoring
+    return manifest
 
 
 def write_run_manifest(manifest: dict, path: str | Path) -> Path:
