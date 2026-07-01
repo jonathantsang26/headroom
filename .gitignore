@@ -136,6 +136,10 @@ celerybeat.pid
 *.aof
 *.pid
 
+# Raw Snapshots / Fixture
+data/raw/
+data/processed/
+
 # RabbitMQ
 mnesia/
 rabbitmq/
