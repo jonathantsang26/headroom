@@ -20,8 +20,11 @@ SIGNAL_NAMES = (
 )
 
 
-def _scaled(rng: Range, denom: float, *, cid: str, name: str) -> Range:
-    """Normalize a Range by a fixed reference (preserves the distribution shape)."""
+def _scaled(rng: Range, denom: float, *, cid: str, name: str,
+            inputs: list[str] | None = None) -> Range:
+    """Normalize a Range by a fixed reference (preserves the distribution shape).
+    `inputs` chains this signal to the upstream Range it was derived from, so the
+    publishable gate's taint walk reaches that Range's source."""
     d = denom or 1.0
     return synthetic_range(
         lo=rng.lo / d,
@@ -30,10 +33,12 @@ def _scaled(rng: Range, denom: float, *, cid: str, name: str) -> Range:
         basis=f"{name} normalized by reference {d}.",
         provider=rng.provider or rng.source,
         lineage_id=f"signal:{name}:{cid}",
+        inputs=inputs,
     )
 
 
-def _const(value: float, *, cid: str, name: str, spread: float = 0.0) -> Range:
+def _const(value: float, *, cid: str, name: str, spread: float = 0.0,
+           inputs: list[str] | None = None) -> Range:
     return synthetic_range(
         lo=max(0.0, value - spread),
         expected=value,
@@ -41,6 +46,7 @@ def _const(value: float, *, cid: str, name: str, spread: float = 0.0) -> Range:
         basis=f"{name} (point with small uncertainty band).",
         provider="model.signals",
         lineage_id=f"signal:{name}:{cid}",
+        inputs=inputs,
     )
 
 
@@ -90,11 +96,12 @@ def build_signals(
     # rent magnitude
     if co is not None:
         signals["rent"] = store.add(
-            _scaled(co.rent_musd, refs["rent_ref_musd"], cid=cid, name="rent")
+            _scaled(co.rent_musd, refs["rent_ref_musd"], cid=cid, name="rent",
+                    inputs=[co.rent_musd.lineage_id])
         )
         signals["persistence"] = store.add(
             _scaled(co.hours_binding, refs["persist_ref_hours"], cid=cid,
-                    name="persistence")
+                    name="persistence", inputs=[co.hours_binding.lineage_id])
         )
     else:
         signals["rent"] = store.add(_const(0.0, cid=cid, name="rent", spread=0.05))
@@ -102,9 +109,14 @@ def build_signals(
             _const(0.0, cid=cid, name="persistence", spread=0.05)
         )
 
-    # loading (already a fraction of thermal)
+    # loading (a fraction of thermal). The reference is now an EXPLICIT config knob
+    # (references.loading_ref), not a hidden 1.0, so loading is normalized on the same
+    # deliberate, tunable footing as every other signal. Default 1.0 keeps 100%
+    # loading -> 1.0 (an overloaded line scores >1, which is intended); retune via the
+    # Experiments slider to see the effect on the ranking.
     signals["loading"] = store.add(
-        _scaled(loading, 1.0, cid=cid, name="loading")
+        _scaled(loading, refs.get("loading_ref", 1.0), cid=cid, name="loading",
+                inputs=[loading.lineage_id])
     )
 
     # demand pressure: queue MW nearby
@@ -123,6 +135,7 @@ def build_signals(
                 lo=0.7, expected=max(0.7, 0.5 + 0.5 * cost_norm), hi=1.0,
                 basis="Named in a plan; level scaled by assigned upgrade cost.",
                 provider="spp_itp", lineage_id=f"signal:planning:{cid}",
+                inputs=[pl.assigned_cost_musd.lineage_id],
             )
         )
     else:
@@ -147,6 +160,7 @@ def build_signals(
                 basis="rent x persistence (projected realized congestion), normalized.",
                 provider="spp_binding_constraints",
                 lineage_id=f"signal:cost_of_inaction:{cid}",
+                inputs=[co.rent_musd.lineage_id, co.hours_binding.lineage_id],
             )
         )
     else:

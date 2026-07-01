@@ -57,8 +57,13 @@ def synthetic_range(
     provider: str,
     lineage_id: str,
     dist: Dist = "triangular",
+    inputs: list[str] | None = None,
 ) -> Range:
-    """A Bucket-B Range imitating `provider` but truly sourced from synthetic data."""
+    """A Bucket-B Range imitating `provider` but truly sourced from synthetic data.
+
+    Pass `inputs` (upstream lineage_ids) when this value is DERIVED from other
+    envelopes, so the publishable-gate taint walk reaches those upstream sources.
+    Omit it for a leaf (a value that names a source directly)."""
     return Range(
         lo=lo,
         expected=expected,
@@ -69,4 +74,5 @@ def synthetic_range(
         provider=provider,
         source_version=SYNTHETIC_VERSION,
         lineage_id=lineage_id,
+        inputs=list(inputs or []),
     )

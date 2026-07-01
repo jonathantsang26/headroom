@@ -20,8 +20,10 @@ from headroom.provenance.envelope import Range
 
 
 def top_k(n: int, fraction: float) -> int:
-    """Size of the shortlist. Floored at 1 so it is never 0 at small N (a top-decile
-    of <10 constraints would otherwise admit nobody and the metric would be dead)."""
+    """Size of the shortlist = round(n * fraction), where `fraction` is the configured
+    `top_fraction` (default 0.25, a top quartile). Floored at 1 so it is never 0 at
+    small N (any small fraction of <1/fraction constraints would otherwise admit
+    nobody and the metric would be dead)."""
     return max(1, round(n * fraction))
 
 

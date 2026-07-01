@@ -18,8 +18,11 @@ references:
   demand_ref_mw: 1000.0
   planning_cost_ref_musd: 200.0
   coi_ref_musd: 2.5
+  loading_ref: 1.0          # loading is already a 0-1 fraction of thermal (100%->1.0);
+                            # kept 1:1 deliberately so overloaded lines score >1. Tunable.
 
 stability:
   draws: 10000
-  top_fraction: 0.25   # top-quartile shortlist (top-decile is degenerate at small N)
+  top_fraction: 0.25   # shortlist = top quartile. (A tighter fraction like a decile is
+                       # degenerate at small N — top_k floors to 1 either way.)
   seed: 20260630       # recorded in the run manifest -> reproducible draws

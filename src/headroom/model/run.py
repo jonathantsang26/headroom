@@ -79,7 +79,12 @@ def _provenance(signals: dict, bb: BucketBResult, cid: str) -> str:
             f"loading={bb.screen_status.get(cid, 'ok')}"]
     if cid in bb.planning:
         bits.append(f"planning={bb.planning[cid].plan}")
-    bits.append("data=synthetic_fixture")
+    # Report the ACTUAL data provenance from the envelopes — the distinct true
+    # `source`(s) feeding this row — not a hardcoded label. Synthetic runs report
+    # `synthetic_fixture`; a real run reports its real source(s). Keying on the gate-
+    # trusted `source` (not `provider`) keeps this string honest under both.
+    sources = sorted({s.source for s in signals.values()})
+    bits.append("data=" + ",".join(sources))
     return "; ".join(bits)
 
 
