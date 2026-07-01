@@ -1,0 +1,25 @@
+# Scoring weights, normalization references, and stability settings.
+# Transparent and tunable — no black box. Signals stay explainable (each visible in
+# the output); the composite is a weighted sum, reported as a DISTRIBUTION not a point.
+
+weights:            # must sum to 1.0
+  rent: 0.25                # congestion-rent magnitude
+  loading: 0.20             # DC N-1 physics screen (fraction of thermal)
+  persistence: 0.15         # hours binding
+  demand_pressure: 0.15     # queue MW seeking headroom nearby
+  planning: 0.15            # named in a plan? assigned upgrade cost? (clean signal)
+  cost_of_inaction: 0.10    # rent x persistence (the tool's core framing)
+
+# Each raw signal is normalized to ~0-1 by a fixed, documented reference so the
+# composite is interpretable. References are explicit, not learned.
+references:
+  rent_ref_musd: 50.0
+  persist_ref_hours: 600.0
+  demand_ref_mw: 1000.0
+  planning_cost_ref_musd: 200.0
+  coi_ref_musd: 2.5
+
+stability:
+  draws: 10000
+  top_fraction: 0.25   # top-quartile shortlist (top-decile is degenerate at small N)
+  seed: 20260630       # recorded in the run manifest -> reproducible draws

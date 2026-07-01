@@ -25,9 +25,10 @@ def congestion_observations(
         rent = store.add(
             band(
                 annual_rent,
-                lo_frac=0.7,
-                hi_frac=1.3,
-                basis="SPP monthly DA congestion cost annualized, ±30% band ($M/yr).",
+                lo_frac=0.6,
+                hi_frac=1.5,
+                basis="SPP monthly DA congestion cost annualized, -40%/+50% band "
+                "(forward congestion is genuinely uncertain) ($M/yr).",
                 provider=PROVIDER,
                 lineage_id=f"rent:{cid}",
             )
