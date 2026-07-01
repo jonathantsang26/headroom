@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-app = ["streamlit>=1.30", "pandas>=2"]   # Phase-4 map/table UI
+app = ["streamlit>=1.30", "pandas>=2", "pydeck>=0.8"]   # Phase-4 map/table UI (pydeck ships with streamlit)
 mcp = ["fastmcp>=0.1"]                    # deferred MCP server (Decision 2)
 
 [project.scripts]
