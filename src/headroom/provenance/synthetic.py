@@ -7,8 +7,7 @@ shortlist under ``public_only=True``. The real source a value imitates is record
 in `provider`, so triangulation across "sources" still works.
 
 A synthetic run can therefore only ever produce an INTERNAL (``public_only=False``)
-export — never a shareable artifact. That is by construction, not by a flag someone
-can forget to set.
+export — never a shareable artifact. 
 """
 
 from __future__ import annotations

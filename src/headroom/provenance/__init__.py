@@ -1,5 +1,4 @@
-"""Provenance spine — cross-cuts every stage. Nothing moves without a source,
-a pinned version, and lineage back to the original filing/report."""
+"""Lineage and provenance tracking for Headroom data inputs."""
 
 from headroom.provenance.envelope import Fact, Range, derive_lineage_id
 from headroom.provenance.lineage import LineageStore

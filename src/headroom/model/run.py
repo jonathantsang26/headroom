@@ -149,8 +149,15 @@ def run_model(
 
 def _dedupe_to_corridors(scores: list[Score]) -> list[dict]:
     """Footprint-dedup: many flowgates can sit on one physical line; the deployment
-    unit is the corridor. Represent each corridor by its strongest flowgate and note
-    how many flowgates rolled up (Decision 4)."""
+    unit is the corridor. Each corridor row reports BOTH roll-ups (Decision 4):
+
+    max — the strongest member represents the corridor (primary sort key; conservative:
+          never inflated by member count).
+    sum — members aggregated. `expected_topk_slots` = Σ p_top_k is EXACT (linearity of
+          expectation: the expected number of top-k slots this corridor occupies,
+          regardless of correlation between members). `sum_composite_*` is a field-wise
+          band sum — a perfect-correlation bound, same construction as the coi band;
+          the draw-exact sum band would require member draws from rank_stability."""
     by_corridor: dict[str, list[Score]] = {}
     for s in scores:
         by_corridor.setdefault(s.physical_corridor, []).append(s)
@@ -163,10 +170,16 @@ def _dedupe_to_corridors(scores: list[Score]) -> list[dict]:
             "representative_flowgate": best.constraint_id,
             "n_flowgates": len(members),
             "flowgates": [m.constraint_id for m in members],
+            # max view (champion) — primary ranking, unchanged semantics
             "p_top_k": best.p_top_k,
             "composite_lo": best.composite.lo,
             "composite_expected": best.composite.expected,
             "composite_hi": best.composite.hi,
+            # sum view (aggregate) — exact stat first, bounded band second
+            "expected_topk_slots": sum(m.p_top_k for m in members),
+            "sum_composite_lo": sum(m.composite.lo for m in members),
+            "sum_composite_expected": sum(m.composite.expected for m in members),
+            "sum_composite_hi": sum(m.composite.hi for m in members),
             "recommended_get": best.recommended_get,
             "provenance": best.provenance,
         })

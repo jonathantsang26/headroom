@@ -1,11 +1,3 @@
-"""Optional FastMCP server (Decision 2: DEFERRED — Phase 4+ add-on, not v1).
-
-Deliberately a thin stub. The scored outputs are already materialized as queryable
-Parquet by headroom.export, so exposing them to an MCP client is ~1 day of work when wanted:
-each MCP tool is one parameterized DuckDB query over scores.parquet. Kept out of the
-test/import path via a guarded import so a missing `fastmcp` never breaks the build.
-"""
-
 from __future__ import annotations
 
 import json
