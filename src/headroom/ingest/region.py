@@ -31,6 +31,16 @@ REGIONS: dict[str, RegionConfig] = {
     "miso-synth": RegionConfig(
         name="miso-synth", rto="MISO", data_dir=_FIXTURES / "spp_synth", synthetic=True
     ),
+    # LIVE pilot region (Decision: SPP first). data_dir points at a pinned snapshot;
+    # `current` is a symlink (or copy) to the latest dated dir under data/raw/spp/,
+    # maintained by headroom.ingest.adapters.build_snapshot. synthetic=False routes
+    # ingest to the live loader, which refuses any table lacking a manifest stamp.
+    "spp": RegionConfig(
+        name="spp",
+        rto="SPP",
+        data_dir=_REPO_ROOT / "data" / "raw" / "spp" / "current",
+        synthetic=False,
+    ),
 }
 
 
