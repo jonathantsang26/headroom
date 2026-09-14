@@ -1,15 +1,4 @@
-"""Real-source envelope constructors — the live twin of `synthetic.py`.
-
-Where `synthetic_fact`/`synthetic_range` hardwire source=synthetic_fixture (never
-publishable), these stamp a real registered source from a snapshot manifest, so a
-value ingested from pinned live data can clear the publishable gate — provided its
-source is registered `publishable: true` in config/sources.yaml AND every ancestor
-in its lineage is too. The gate stays fail-closed: an unregistered source name
-blocks export exactly like a synthetic one.
-
-`SourceStamp` is the unit of trust hand-off: (source, source_version, retrieved_at)
-read from a snapshot's manifest — never invented at call sites.
-"""
+"""Real-source envelope constructors — the live twin of `synthetic.py`."""
 
 from __future__ import annotations
 

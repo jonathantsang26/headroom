@@ -1,11 +1,6 @@
 """Ingest: read the (pinned, immutable) region data and envelope every value at the
 boundary. For `spp-synth` the data is the committed fixtures; values become
-synthetic-sourced `Fact`s tagged with the real provider they imitate.
-
-A live adapter (ingest/ferc_form1.py etc.) would replace `_load_csv` with a
-RateLimitedClient fetch + raw snapshot, but emit the SAME shapes — so everything
-downstream is identical whether data is fixture or live.
-"""
+synthetic-sourced `Fact`s tagged with the real provider they imitate."""
 
 from __future__ import annotations
 
@@ -46,8 +41,7 @@ class IngestBundle:
     planning: list[dict] = field(default_factory=list)
     queue: list[dict] = field(default_factory=list)
     load_930: list[dict] = field(default_factory=list)
-    # Per-table provenance stamps (live regions only; empty for fixtures). Prepares
-    # L2: reconstruct will stamp its leaf Ranges from these instead of synthetic.
+    # Per-table provenance stamps (live regions only; empty for fixtures).
     table_stamps: dict[str, SourceStamp] = field(default_factory=dict)
 
 
@@ -179,13 +173,7 @@ def _load_live(region: RegionConfig, store: LineageStore) -> IngestBundle:
     value with its TRUE source from the snapshot manifest. Fail-closed twice over:
     no manifest -> Snapshot() raises; table without a stamp -> stamp() raises.
     Same shapes as the fixture branch (the fixture format IS the post-join format),
-    so everything downstream is identical.
-
-    L2 NOTE: the five market/planning tables pass through as dicts exactly like the
-    fixture branch, and reconstruct still stamps its leaf Ranges synthetic — so a
-    live run remains gate-blocked (INTERNAL export) until reconstruct threads
-    `bundle.table_stamps`. The airlock opens in stages, failing closed throughout.
-    """
+    so everything downstream is identical."""
     snap = Snapshot(region.data_dir)
     n = snap.normalized
     stamps = {t: snap.stamp(t) for t in snap.manifest["tables"]}

@@ -1,14 +1,4 @@
-"""Phase 4 map/table UI (Decision 3: minimal, legibility over polish).
-
-Draws the footprint-deduped corridors as line geometry colored by recommended GET
-(the §7.2 differentiator most congestion maps lack), with line width encoding rank
-stability and a detail panel showing each corridor's composite p5/p50/p95 band. The
-map's data layer lives in `map_data.py` and is unit-tested offline; this renderer is
-browser-only and stays `# pragma: no cover`. The verified deliverable remains the
-export path (headroom.export); this app renders the same rows on top of a map.
-
-Run:  streamlit run src/headroom/app/streamlit_app.py   (or: headroom app)
-"""
+"""Phase 4 map/table UI (Decision 3: minimal, legibility over polish)."""
 
 from __future__ import annotations
 

@@ -1,11 +1,4 @@
-"""The two foundational types. Everything else is built on them.
-
-`Fact`  — every cleaned Bucket-A field (value + verbatim original + confidence).
-`Range` — every Bucket-B unobservable (lo/expected/hi + how it was derived).
-
-Both carry their own `lineage_id` and the `inputs` they were derived from, so the
-provenance graph can be walked end-to-end (used by the publishable export gate).
-"""
+"""The two foundational types. Everything else is built on them."""
 
 from __future__ import annotations
 
@@ -40,11 +33,7 @@ class _Enveloped(BaseModel):
     source_version: str
     lineage_id: str
     inputs: list[str] = Field(default_factory=list)
-    # `source` records ACTUAL provenance (what the gate trusts). `provider` records
-    # the *nominal* origin a value imitates — None in a real run; the real source name
-    # (e.g. "hifld_transmission") for a synthetic fixture whose true source is
-    # "synthetic_fixture". Triangulation keys on `provider or source` so cross-source
-    # agreement still works under synthetic data, while the gate sees only `source`.
+    # `source` records ACTUAL provenance (what the gate trusts).
     provider: str | None = None
 
 

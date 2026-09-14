@@ -1,9 +1,4 @@
-"""The source registry: parse `config/sources.yaml` into typed `SourceSpec`s.
-
-FAIL-CLOSED by construction: `Compliance.publishable` defaults to False, and a
-source entry with no `compliance` block at all gets a default `Compliance()` —
-also non-publishable. A source is never publishable by omission.
-"""
+"""The source registry: parse `config/sources.yaml` into typed `SourceSpec`s."""
 
 from __future__ import annotations
 

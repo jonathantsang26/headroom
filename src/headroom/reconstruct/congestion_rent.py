@@ -1,8 +1,6 @@
 """6.1 Congestion rent from price shadows. The nodal LMP spread across a binding
 constraint IS its shadow price; SPP publishes per-constraint monthly congestion
-cost directly, so here the magnitude is largely handed to us and we bound it.
-
-Emits a `CongestionObs` (rent Range + hours-binding Range) per constraint."""
+cost directly, so here the magnitude is largely handed to us and we bound it."""
 
 from __future__ import annotations
 

@@ -1,10 +1,4 @@
-"""5.2 Invariants — domain priors catch what statistical outlier detection misses.
-
-Each check TAGS A FLAG rather than deleting the value (flag, never drop). Some
-invariants run on raw observations (an implausible reading), others on the assembled
-line (cross-field plausibility). `flow_le_thermal` runs in Phase 2 once DC flows
-exist, and is applied there.
-"""
+"""5.2 Invariants — domain priors catch what statistical outlier detection misses."""
 
 from __future__ import annotations
 

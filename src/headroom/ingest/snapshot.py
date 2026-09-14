@@ -1,14 +1,4 @@
-"""Snapshot manifest — the trust hand-off between adapters and the live loader.
-
-A snapshot directory (e.g. data/raw/spp/2026-07-01/) contains:
-    raw/          verbatim downloads, hashed, never edited
-    normalized/   bundle-shaped tables the loader reads (same filenames/columns as
-                  the fixture region — the fixture format IS the post-join format)
-    snapshot_manifest.json
-
-Fail-closed: a table missing from the manifest has no stamp, and the live loader
-refuses to envelope it.
-"""
+"""Snapshot manifest — the trust hand-off between adapters and the live loader."""
 
 from __future__ import annotations
 

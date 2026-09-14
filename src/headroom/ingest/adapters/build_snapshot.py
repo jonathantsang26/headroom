@@ -1,10 +1,4 @@
-"""Snapshot builder: `python -m headroom.ingest.adapters.build_snapshot [--date D]`
-
-Creates data/raw/spp/<date>/{raw,normalized}/, runs every adapter fetch that is
-implemented (others are reported as TODO, not silently skipped), writes/updates
-snapshot_manifest.json, and points data/raw/spp/current at the new dir. The live
-`spp` region reads only from `current`; a snapshot is immutable once built.
-"""
+"""Snapshot builder: `python -m headroom.ingest.adapters.build_snapshot [--date D]`"""
 
 from __future__ import annotations
 

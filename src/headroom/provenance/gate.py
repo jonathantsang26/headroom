@@ -1,16 +1,4 @@
-"""The publishable export gate (Decision 5).
-
-Headroom may legally *fetch and store* non-public (e.g. CEII) data; it must never
-*publish* it. So the gate sits at the EXPORT boundary, not the fetch boundary, and
-it walks the lineage graph: a value is publishable only if EVERY source in its
-transitive `source_closure` is publishable. This is correct today (every source is
-public, so the gate is a no-op that passes) and stays correct the moment a
-non-publishable tier is added — without that lineage walk, a CEII input would leak
-through any composite built on top of it.
-
-Modeled on office-scout's fail-closed `assert_allowed()` gate, moved from the fetch
-boundary to the export boundary and upgraded from per-source to lineage-transitive.
-"""
+"""The publishable export gate (Decision 5)."""
 
 from __future__ import annotations
 
@@ -29,14 +17,7 @@ def assert_publishable(
     *,
     public_only: bool = True,
 ) -> None:
-    """Gate a value before it leaves the system in a shareable artifact.
-
-    Fail-closed: a source absent from the registry, or whose `publishable` is
-    False, or a referenced-but-missing lineage node, all block the export.
-
-    `registry` is any object with `.get(name) -> SourceSpec | None` where
-    SourceSpec has a `.publishable` bool (see sources/registry.py).
-    """
+    """Gate a value before it leaves the system in a shareable artifact."""
     if not public_only:
         return
 

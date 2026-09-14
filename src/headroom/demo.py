@@ -1,9 +1,6 @@
 """Phase 0 'done when': a dummy value flows end-to-end carrying source/version/
 confidence, the run is pinned to a manifest, and the publishable gate is exercised
-both ways (passes for public lineage, blocks for CEII-tainted lineage).
-
-Run:  .venv/bin/python -m headroom.demo
-"""
+both ways (passes for public lineage, blocks for CEII-tainted lineage)."""
 
 from __future__ import annotations
 
@@ -28,8 +25,7 @@ def run_demo() -> dict:
     registry = load_registry()
     store = LineageStore()
 
-    # 1. A raw Bucket-A Fact: a line voltage from FERC Form 1 (via PUDL), enveloped
-    #    with source + pinned version + confidence. Note `as_reported` preserved.
+    # 1.
     voltage = store.add(
         Fact(
             value=345.0,
@@ -43,8 +39,7 @@ def run_demo() -> dict:
         )
     )
 
-    # 2. A Bucket-B Range: congestion rent for a constraint, derived from SPP's
-    #    public per-constraint monthly congestion-cost summary. Width is information.
+    # 2.
     rent = store.add(
         Range(
             lo=0.4,
@@ -58,8 +53,7 @@ def run_demo() -> dict:
         )
     )
 
-    # 3. A derived composite built from both public inputs (a stand-in score). Its
-    #    lineage_id is deterministic from its parents.
+    # 3.
     parents = [voltage.lineage_id, rent.lineage_id]
     composite = store.add(
         Range(
@@ -77,8 +71,7 @@ def run_demo() -> dict:
     # 4. Export gate: the public composite passes under public_only=True.
     assert_publishable(composite.lineage_id, store, registry, public_only=True)
 
-    # 5. Demonstrate the gate blocks a CEII-tainted derivation. Add a CEII Range and
-    #    a composite that depends on it; the lineage walk must refuse to publish it.
+    # 5.
     ceii = store.add(
         Range(
             lo=0.0,

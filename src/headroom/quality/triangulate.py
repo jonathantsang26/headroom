@@ -1,9 +1,4 @@
-"""5.1 Triangulate — cross-check the same quantity across independent sources.
-
-Agreement -> high confidence. Divergence -> low confidence + a flag, to be
-investigated, NEVER averaged away. The chosen value is a majority vote (so a single
-implausible reading does not move it), and the raw disagreement is preserved in the
-flags and in the input lineage."""
+"""5.1 Triangulate — cross-check the same quantity across independent sources."""
 
 from __future__ import annotations
 

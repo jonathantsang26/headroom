@@ -109,11 +109,7 @@ def build_signals(
             _const(0.0, cid=cid, name="persistence", spread=0.05)
         )
 
-    # loading (a fraction of thermal). The reference is now an EXPLICIT config knob
-    # (references.loading_ref), not a hidden 1.0, so loading is normalized on the same
-    # deliberate, tunable footing as every other signal. Default 1.0 keeps 100%
-    # loading -> 1.0 (an overloaded line scores >1, which is intended); retune via the
-    # Experiments slider to see the effect on the ranking.
+    # loading (a fraction of thermal).
     signals["loading"] = store.add(
         _scaled(loading, refs.get("loading_ref", 1.0), cid=cid, name="loading",
                 inputs=[loading.lineage_id])
@@ -144,11 +140,6 @@ def build_signals(
         )
 
     # cost of inaction: rent x persistence fraction.
-    # KNOWN SIMPLIFICATION: this is emitted as an independent signal Range, so a
-    # Monte-Carlo draw samples it independently of `rent`/`persistence` even though
-    # it is mechanically ~rent*persistence. At weight 0.10 this does not move the
-    # ranking; a fully coherent model would derive it inside composite_sample from the
-    # already-sampled rent and persistence. Logged, not silently assumed away.
     if co is not None:
         coi_exp = co.rent_musd.expected * (co.hours_binding.expected / 8760.0)
         coi_lo = co.rent_musd.lo * (co.hours_binding.lo / 8760.0)

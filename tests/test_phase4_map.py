@@ -58,8 +58,6 @@ def test_width_encodes_stability():
 
 
 def test_missing_geometry_is_flagged_never_dropped(result):
-    # A corridor whose line_id is not in lines_by_id must still surface, with
-    # has_geometry=False and null coords — never silently omitted.
     result.model.shortlist.append({
         "physical_corridor": "LINE_DOES_NOT_EXIST",
         "representative_flowgate": "FLOWGATE_X",

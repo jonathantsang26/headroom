@@ -1,15 +1,4 @@
-"""7.3 Stability — the headline metric is rank stability, not a sharp score.
-
-A corridor earns the shortlist by staying in the top-k across the full plausible
-range of every uncertain input. We draw from each signal's Range, recompute each
-composite, re-rank, and count how often each constraint lands in the top-k. The
-SAME draws produce the composite's reported band (p5/p50/p95), so the displayed
-uncertainty and the rank stability are mutually consistent — a wide band and a
-binary p_top_k can't disagree.
-
-Reproducibility (§8 + Phase-5 done-when): the RNG is seeded and the seed is recorded
-in the run manifest, so a pinned re-run reproduces identical p_top_k.
-"""
+"""7.3 Stability — the headline metric is rank stability, not a sharp score."""
 
 from __future__ import annotations
 
@@ -35,15 +24,7 @@ def rank_stability(
     top_fraction: float,
     seed: int,
 ) -> tuple[dict[str, float], dict[str, tuple[float, float, float]], int]:
-    """Return (p_top_k, composite_percentiles, k).
-
-    * p_top_k[cid]        — probability cid lands in the top-k across draws
-    * percentiles[cid]    — (p5, p50, p95) of cid's composite over the SAME draws
-    * k                   — shortlist size
-
-    Each draw samples every signal of every constraint, ranks the resulting
-    composites, and credits the top-k. Percentiles come from the identical sample
-    matrix so the reported band reflects exactly what the ranking saw."""
+    """Return (p_top_k, composite_percentiles, k)."""
     cids = list(signals_by_cid)
     n = len(cids)
     k = top_k(n, top_fraction)

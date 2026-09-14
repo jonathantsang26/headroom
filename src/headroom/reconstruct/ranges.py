@@ -1,11 +1,6 @@
 """6.4 Bound the unobservables. Anything not observed directly becomes a `Range`,
 with `basis` documenting the derivation. Width is information — it propagates
-honestly into rank stability.
-
-In this offline build every Range is `synthetic_range` (true source =
-synthetic_fixture, with the imitated real source in `provider`). A live run would
-swap in Ranges carrying the real source so they can clear the publishable gate.
-"""
+honestly into rank stability."""
 
 from __future__ import annotations
 

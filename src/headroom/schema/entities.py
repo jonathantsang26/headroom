@@ -1,6 +1,5 @@
 """Core entities. Analytical values are `Fact` (Bucket A) or `Range` (Bucket B) —
-never bare scalars. Structural geometry (coords, length, endpoints) stays scalar.
-"""
+never bare scalars. Structural geometry (coords, length, endpoints) stays scalar."""
 
 from __future__ import annotations
 

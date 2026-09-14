@@ -50,8 +50,7 @@ def test_changing_seed_changes_the_stability_but_not_catastrophically():
 
 
 def test_pipeline_is_region_parameterized():
-    # miso-synth exercises the SAME code path (generalization proof), not a bespoke
-    # SPP-only pipeline.
+    # miso-synth exercises the SAME code path (generalization proof), not a bespoke SPP-only pipeline.
     spp = run_pipeline("spp-synth")
     miso = run_pipeline("miso-synth")
     assert spp.region.rto == "SPP"
@@ -67,7 +66,6 @@ def test_coverage_note_present_in_quality_report():
 
 
 def test_reproduce_rejects_manifest_without_scoring():
-    # A bare manifest (e.g. the demo's, which records no region/scoring) is not
-    # reproducible; it must fail with a clear error, not a bare KeyError.
+    # A bare manifest (e.g.
     with pytest.raises(ValueError, match="not reproducible"):
         reproduce_from_manifest({"run_label": "x"})

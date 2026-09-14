@@ -1,15 +1,4 @@
-"""Map data layer (Phase-4 UI, Decision 3: legibility over polish).
-
-Pure functions that turn a `PipelineResult` into plain, map-ready dicts. NO Streamlit
-or pydeck import — this is the part that is unit-tested offline (the renderer in
-`streamlit_app.py` is browser-only and stays `# pragma: no cover`).
-
-The scored atom is the flowgate, but the *presented* unit is the footprint-deduped
-physical corridor (Decision 4). A corridor's geometry is not stored anywhere: it is
-recovered by walking corridor (a `line_id`) -> `Line.from_bus`/`to_bus` -> `Bus`
-lat/lon. A corridor whose line or endpoint coords are missing is kept with
-`has_geometry=False` (flag, never drop) so it still appears in the table.
-"""
+"""Map data layer (Phase-4 UI, Decision 3: legibility over polish)."""
 
 from __future__ import annotations
 

@@ -34,8 +34,6 @@ def test_strict_shareable_export_raises_on_synthetic(tmp_path):
 
 
 def test_all_public_lineage_clears_the_gate(tmp_path):
-    # Simulate a real run by marking the synthetic source publishable in this
-    # run's registry — the gate should then permit a shareable artifact.
     reg = load_registry()
     reg.get("synthetic_fixture").compliance.publishable = True
     result = run_pipeline("spp-synth", registry=reg)
@@ -67,8 +65,6 @@ def test_score_rows_are_ranked_and_complete():
 
 
 def test_mcp_refuses_non_shareable_scores(tmp_path):
-    # The MCP read boundary must honor the same public-only guarantee as export:
-    # serving a synthetic run's scores parquet is refused (before any fastmcp import).
     from headroom.mcp.server import build_server
 
     result = run_pipeline("spp-synth")

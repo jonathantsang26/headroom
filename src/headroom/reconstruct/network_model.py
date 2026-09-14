@@ -1,16 +1,4 @@
-"""6.2 Physics proxy — an approximate DC / PTDF screen from public topology.
-
-This is the SCREEN, not a power-flow study: it flags which segments carry flow
-under load patterns and which flowgates load up under their N-1 contingency. It
-does NOT replicate AC contingency analysis and every output says so.
-
-Correctness points (the doc flags this module as plan-first):
-  * The nodal susceptance matrix B' is singular (one zero eigenvalue, the angle
-    reference). We remove the slack row/column before solving / inverting.
-  * The injection vector must sum to ~0 or the DC solve is inconsistent; we balance
-    it explicitly.
-  * N-1 is done honestly: drop the contingency line from the network and re-solve.
-"""
+"""6.2 Physics proxy — an approximate DC / PTDF screen from public topology."""
 
 from __future__ import annotations
 
@@ -84,9 +72,7 @@ def build_dc_model(
         x = float(ln.reactance_pu.expected) if ln.reactance_pu else estimate_reactance_pu(
             ln.length_mi, float(ln.voltage_kv.value)
         )
-        # A zero-length line or a bad (0 kV) voltage yields x == 0 -> infinite
-        # susceptance. Floor x so B' stays finite rather than dividing by zero deep
-        # in matrix construction; such a line is a data problem, not a short circuit.
+        # A zero-length line or a bad (0 kV) voltage yields x == 0 -> infinite susceptance.
         if x <= 0:
             x = 1e-6
         incidence[l, fi] = 1.0
@@ -223,9 +209,7 @@ def screen_loadings(
 
         base = _loadings_over_snapshots(model, mon_idx, thermal, injections, ())
         if not base:
-            # No usable base-case flows (no load snapshots, or the N-0 network itself
-            # is disconnected). Emit an indeterminate Range rather than crashing on
-            # min([])/max([]) — flag, never drop.
+            # No usable base-case flows (no load snapshots, or the N-0 network itself is disconnected).
             status[cid] = "no_base_flows"
             loading[cid] = store.add(
                 _loading_range(cid, 0.0, 1.0, 2.0, store_basis="indeterminate: no "

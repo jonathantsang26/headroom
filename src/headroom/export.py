@@ -1,15 +1,4 @@
-"""Phase 4 delivery — the ranked export is the real shareable deliverable.
-
-The publishable gate decides the mode, by construction:
-  * every score is checked with assert_publishable(public_only=True);
-  * if ANY score's lineage transitively touches a non-publishable source (all
-    synthetic runs do), a SHAREABLE artifact is refused and only an INTERNAL,
-    clearly-stamped export is written;
-  * a real all-public run passes the gate and writes the shareable artifact.
-
-So a fabricated shortlist can never masquerade as publishable — the guard is the
-same lineage walk built in Phase 0, not a flag someone can forget.
-"""
+"""Phase 4 delivery — the ranked export is the real shareable deliverable."""
 
 from __future__ import annotations
 
@@ -96,13 +85,9 @@ def _materialize_parquet(json_path: Path, parquet_path: Path) -> bool:
         import duckdb
     except ImportError:  # pragma: no cover
         return False
-    # COPY ... TO does not accept a bound parameter for the file path; inline the
-    # (internally-controlled) paths with quote-escaping.
+    # COPY ...
     jp = str(json_path).replace("'", "''")
     pp = str(parquet_path).replace("'", "''")
-    # Best-effort: a bad --out path or a COPY failure must not abort an otherwise
-    # successful delivery (JSON/CSV/manifest are already written), and must never
-    # leak the connection handle.
     try:
         with duckdb.connect() as con:
             con.execute(

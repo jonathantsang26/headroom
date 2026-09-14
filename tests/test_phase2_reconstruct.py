@@ -85,8 +85,7 @@ def test_loadings_are_physically_plausible():
 
 
 def test_empty_injections_does_not_crash_and_flags_every_constraint():
-    # No load snapshots -> no flows. The screen must still emit a Range per
-    # constraint (flag, never drop), not raise on min([])/max([]).
+    # No load snapshots -> no flows.
     from headroom.reconstruct.network_model import (
         attach_reactance,
         build_dc_model,

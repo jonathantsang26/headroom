@@ -1,9 +1,4 @@
-"""Version pinning + run manifest (§8).
-
-A shareable run pins every source version and records them in a manifest, so
-"where's this number from?" has a one-query answer and a pinned manifest re-runs
-to identical data output.
-"""
+"""Version pinning + run manifest (§8)."""
 
 from __future__ import annotations
 

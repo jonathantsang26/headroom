@@ -20,21 +20,15 @@ class RegionConfig:
 
 
 REGIONS: dict[str, RegionConfig] = {
-    # Offline fixture region: fabricated SPP-shaped data. synthetic=True means the
-    # publishable gate will refuse a shareable export (source = synthetic_fixture).
+    # Offline fixture region: fabricated SPP-shaped data.
     "spp-synth": RegionConfig(
         name="spp-synth", rto="SPP", data_dir=_FIXTURES / "spp_synth", synthetic=True
     ),
     # A second region with the SAME config shape — proves generalization (Phase 5).
-    # Points at the same fixture dir; only here to demonstrate parameterization, not
-    # to ship shallow real MISO ingest.
     "miso-synth": RegionConfig(
         name="miso-synth", rto="MISO", data_dir=_FIXTURES / "spp_synth", synthetic=True
     ),
-    # LIVE pilot region (Decision: SPP first). data_dir points at a pinned snapshot;
-    # `current` is a symlink (or copy) to the latest dated dir under data/raw/spp/,
-    # maintained by headroom.ingest.adapters.build_snapshot. synthetic=False routes
-    # ingest to the live loader, which refuses any table lacking a manifest stamp.
+    # LIVE pilot region (Decision: SPP first).
     "spp": RegionConfig(
         name="spp",
         rto="SPP",

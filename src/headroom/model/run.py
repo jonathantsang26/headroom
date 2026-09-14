@@ -79,10 +79,6 @@ def _provenance(signals: dict, bb: BucketBResult, cid: str) -> str:
             f"loading={bb.screen_status.get(cid, 'ok')}"]
     if cid in bb.planning:
         bits.append(f"planning={bb.planning[cid].plan}")
-    # Report the ACTUAL data provenance from the envelopes — the distinct true
-    # `source`(s) feeding this row — not a hardcoded label. Synthetic runs report
-    # `synthetic_fixture`; a real run reports its real source(s). Keying on the gate-
-    # trusted `source` (not `provider`) keeps this string honest under both.
     sources = sorted({s.source for s in signals.values()})
     bits.append("data=" + ",".join(sources))
     return "; ".join(bits)
@@ -108,8 +104,6 @@ def run_model(
         )
         radial_by_cid[c.constraint_id] = is_radial(line, degree)
 
-    # rank stability across the whole set (the headline metric); the same draws give
-    # each composite's reported band so display and stability are consistent
     p_top, pcts, k = rank_stability(
         signals_by_cid, cfg.weights,
         draws=cfg.draws, top_fraction=cfg.top_fraction, seed=cfg.seed,
@@ -149,15 +143,7 @@ def run_model(
 
 def _dedupe_to_corridors(scores: list[Score]) -> list[dict]:
     """Footprint-dedup: many flowgates can sit on one physical line; the deployment
-    unit is the corridor. Each corridor row reports BOTH roll-ups (Decision 4):
-
-    max — the strongest member represents the corridor (primary sort key; conservative:
-          never inflated by member count).
-    sum — members aggregated. `expected_topk_slots` = Σ p_top_k is EXACT (linearity of
-          expectation: the expected number of top-k slots this corridor occupies,
-          regardless of correlation between members). `sum_composite_*` is a field-wise
-          band sum — a perfect-correlation bound, same construction as the coi band;
-          the draw-exact sum band would require member draws from rank_stability."""
+    unit is the corridor. Each corridor row reports BOTH roll-ups (Decision 4):"""
     by_corridor: dict[str, list[Score]] = {}
     for s in scores:
         by_corridor.setdefault(s.physical_corridor, []).append(s)

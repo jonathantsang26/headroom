@@ -1,8 +1,6 @@
 """6.3 Planning exhaust. The operational secret bleeds through the public record:
 ITP/FCA name binding constraints + proposed fixes + assigned upgrade costs. Each
-extracted item cross-links to its constraint (and thence its congestion-rent obs).
-
-Emits a `PlanningItem` (assigned-cost Range) per named constraint."""
+extracted item cross-links to its constraint (and thence its congestion-rent obs)."""
 
 from __future__ import annotations
 

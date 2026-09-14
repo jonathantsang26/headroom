@@ -1,8 +1,7 @@
 """Phase 5 reproducibility. A pinned manifest records the region + the exact scoring
 config (incl. the RNG seed), so re-running from it reproduces the prior ranking
 byte-for-byte. This is what makes Headroom a defensible deliverable rather than a
-notebook: "where's this number from?" and "does it reproduce?" both have answers.
-"""
+notebook: "where's this number from?" and "does it reproduce?" both have answers."""
 
 from __future__ import annotations
 

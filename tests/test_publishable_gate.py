@@ -41,8 +41,6 @@ def test_public_lineage_passes():
     comp = store.add(
         _range(derive_lineage_id("c", parents), "model.composite", parents)
     )
-    # The derived composite's own 'model.composite' label is a stage label, not a
-    # registered source, so it is NOT checked; only its public leaf inputs are.
     assert store.source_closure(comp.lineage_id) == {
         "spp_binding_constraints",
         "spp_marketplace_lmp",

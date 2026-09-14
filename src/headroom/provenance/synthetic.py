@@ -1,14 +1,4 @@
-"""Synthetic-provenance helpers (the autonomous-build safety guard).
-
-Fabricated fixtures flow through the SAME publishable gate as real data. Every
-synthetic value's true `source` is ``synthetic_fixture`` (registered
-``publishable: false``), so the lineage walk refuses to export a synthetic
-shortlist under ``public_only=True``. The real source a value imitates is recorded
-in `provider`, so triangulation across "sources" still works.
-
-A synthetic run can therefore only ever produce an INTERNAL (``public_only=False``)
-export — never a shareable artifact. 
-"""
+"""Synthetic-provenance helpers (the autonomous-build safety guard)."""
 
 from __future__ import annotations
 
@@ -58,11 +48,7 @@ def synthetic_range(
     dist: Dist = "triangular",
     inputs: list[str] | None = None,
 ) -> Range:
-    """A Bucket-B Range imitating `provider` but truly sourced from synthetic data.
-
-    Pass `inputs` (upstream lineage_ids) when this value is DERIVED from other
-    envelopes, so the publishable-gate taint walk reaches those upstream sources.
-    Omit it for a leaf (a value that names a source directly)."""
+    """A Bucket-B Range imitating `provider` but truly sourced from synthetic data."""
     return Range(
         lo=lo,
         expected=expected,

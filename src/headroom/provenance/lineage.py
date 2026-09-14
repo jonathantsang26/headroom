@@ -1,10 +1,4 @@
-"""Lineage graph + taint walk.
-
-A `LineageStore` holds every `Fact`/`Range` keyed by its `lineage_id`. Given any
-value, `source_closure()` walks `inputs` transitively to collect the set of root
-source names it depends on. The publishable export gate (gate.py) uses this so a
-composite built from one non-publishable input is correctly flagged — a per-source
-check at the fetch boundary would miss that (Decision 5)."""
+"""Lineage graph + taint walk."""
 
 from __future__ import annotations
 
@@ -14,9 +8,7 @@ from headroom.provenance.envelope import Fact, Range
 
 Envelope = Union[Fact, Range]
 
-# Prefix marking an input id that is referenced but absent from the store. Such a
-# value cannot be proven publishable, so the gate treats it as non-publishable
-# (fail-closed). The id is preserved after the prefix for debuggability.
+# Prefix marking an input id that is referenced but absent from the store.
 UNKNOWN_PREFIX = "__unknown_node__:"
 
 
@@ -45,14 +37,7 @@ class LineageStore:
         return len(self._nodes)
 
     def source_closure(self, lineage_id: str) -> set[str]:
-        """The set of registered *root* source names this value depends on.
-
-        Taint flows up from the leaves: a LEAF envelope (``inputs == []``) names a
-        real registered source and contributes it; a DERIVED envelope carries a
-        stage label (e.g. ``model.composite``) as its `source`, which is NOT a data
-        source, so it contributes nothing of its own — only its inputs, walked
-        transitively. A referenced-but-missing input becomes an ``UNKNOWN_PREFIX``
-        token so the gate fails closed on it rather than treating it as clean."""
+        """The set of registered *root* source names this value depends on."""
         sources: set[str] = set()
         seen: set[str] = set()
         stack: list[str] = [lineage_id]

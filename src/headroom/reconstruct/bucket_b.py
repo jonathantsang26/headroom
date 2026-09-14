@@ -1,11 +1,4 @@
-"""Phase 2 (Bucket B): reconstruct the operational reality from public shadows.
-
-Produces, all keyed to constraint_id and all `Range`-typed:
-  * congestion rent + hours binding (price shadows, §6.1)
-  * DC N-1 loading screen        (physics proxy, §6.2)
-  * planning items + assigned cost (planning exhaust, §6.3)
-Plus the assembled flowgates (`Constraint`s) and the queue.
-"""
+"""Phase 2 (Bucket B): reconstruct the operational reality from public shadows."""
 
 from __future__ import annotations
 
@@ -62,8 +55,6 @@ def run_bucket_b(
         model, bucket_a.lines_by_id, constraints, injections, store
     )
 
-    # flow_le_thermal invariant (5.2, applied here once flows exist): loading > 1
-    # under N-1 means the flowgate binds — informational, not a data error.
     binding_flags: dict[str, str] = {}
     for cid, rng in loading.items():
         if rng.hi > 1.0:
