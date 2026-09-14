@@ -1,8 +1,9 @@
 # headroom
 
-Ranks transmission constraints by grid-enhancing-technology (GET) deployment
-value using public data. Outputs is a rank-stable shortlist with
-confidence bands. Pilot region: SPP.
+Tests a transmission-constraint ranking pipeline for grid-enhancing-technology
+(GET) deployment value using synthetic, SPP-shaped fixtures. Outputs a
+rank-stable shortlist with confidence bands. Live public-data ingest is in
+progress.
 
 ## Run
 ```bash
