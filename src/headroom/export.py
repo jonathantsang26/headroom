@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from headroom.pipeline import PipelineResult
+from headroom.provenance.digests import ranking_digest
 from headroom.provenance.gate import PublishabilityError, assert_publishable
 from headroom.provenance.versions import build_run_manifest
 
@@ -35,6 +36,7 @@ def scoring_to_manifest(scoring) -> dict:
         "draws": scoring.draws,
         "top_fraction": scoring.top_fraction,
         "weights": scoring.weights,
+        "signal_order": list(scoring.weights),
         "references": scoring.references,
     }
 
@@ -135,6 +137,9 @@ def deliver(
         scoring=scoring_to_manifest(result.scoring),
         region=result.region.name,
         mode=mode,
+        inputs=result.input_identity,
+        runtime=result.runtime,
+        output_sha256=ranking_digest(result),
     )
     manifest["shortlist_k"] = result.model.k
     manifest["n_constraints"] = result.model.n_constraints

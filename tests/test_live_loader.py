@@ -15,6 +15,7 @@ import pytest
 
 from headroom.ingest.load import _load_live
 from headroom.ingest.region import RegionConfig
+from headroom.ingest.snapshot import sha256_of
 from headroom.provenance.lineage import LineageStore
 
 FIXTURES = Path(__file__).parent / "fixtures" / "spp_synth"
@@ -46,6 +47,7 @@ def _make_snapshot(tmp_path: Path) -> Path:
             "source": STAMP_FOR[t],
             "source_version": "test_pin_v1",
             "retrieved_at": RETRIEVED,
+            "sha256": sha256_of(snap / "normalized" / f"{t}.csv"),
         }
     (snap / "snapshot_manifest.json").write_text(
         json.dumps({"schema_version": 1, "snapshot_date": "2026-07-01",
@@ -91,3 +93,58 @@ def test_live_loader_fails_closed_on_unstamped_table(tmp_path):
     (snap / "snapshot_manifest.json").write_text(json.dumps(m))
     with pytest.raises(KeyError):
         _load_live(_region(snap), LineageStore())
+
+
+@pytest.mark.parametrize("table", ["constraints", "congestion", "planning", "queue", "load_930"])
+def test_live_loader_rejects_missing_operational_stamp_before_lineage(tmp_path, table):
+    snap = _make_snapshot(tmp_path)
+    mpath = snap / "snapshot_manifest.json"
+    manifest = json.loads(mpath.read_text())
+    del manifest["tables"][table]
+    mpath.write_text(json.dumps(manifest))
+    store = LineageStore()
+
+    with pytest.raises(KeyError, match=table):
+        _load_live(_region(snap), store)
+    assert len(store) == 0
+
+
+@pytest.mark.parametrize("table", ["hifld_lines", "load_930"])
+def test_live_loader_rejects_tampered_table_before_lineage(tmp_path, table):
+    snap = _make_snapshot(tmp_path)
+    path = snap / "normalized" / f"{table}.csv"
+    path.write_text(path.read_text() + "\n")
+    store = LineageStore()
+
+    with pytest.raises(ValueError, match=rf"{table}.*sha256"):
+        _load_live(_region(snap), store)
+    assert len(store) == 0
+
+
+def test_live_loader_requires_hash_before_lineage(tmp_path):
+    snap = _make_snapshot(tmp_path)
+    mpath = snap / "snapshot_manifest.json"
+    manifest = json.loads(mpath.read_text())
+    del manifest["tables"]["load_930"]["sha256"]
+    mpath.write_text(json.dumps(manifest))
+    store = LineageStore()
+
+    with pytest.raises(ValueError, match="load_930.*sha256"):
+        _load_live(_region(snap), store)
+    assert len(store) == 0
+
+
+def test_live_loader_uses_relocated_manifest_paths(tmp_path):
+    snap = _make_snapshot(tmp_path)
+    mpath = snap / "snapshot_manifest.json"
+    manifest = json.loads(mpath.read_text())
+    for table in TABLES:
+        path = snap / f"relocated_{table}.csv"
+        (snap / "normalized" / f"{table}.csv").rename(path)
+        manifest["tables"][table]["path"] = path.name
+    mpath.write_text(json.dumps(manifest))
+
+    bundle = _load_live(_region(snap), LineageStore())
+    assert len(bundle.buses) > 0
+    assert len(bundle.line_skeleton) > 0
+    assert all((bundle.constraints, bundle.congestion, bundle.planning, bundle.queue, bundle.load_930))

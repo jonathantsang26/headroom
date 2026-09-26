@@ -5,11 +5,14 @@ synthetic-sourced `Fact`s tagged with the real provider they imitate."""
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass, field
+import hashlib
+import io
+import json
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from headroom.ingest.region import RegionConfig, get_region
-from headroom.ingest.snapshot import Snapshot
+from headroom.ingest.snapshot import REQUIRED_TABLES, Snapshot
 from headroom.provenance.envelope import Fact
 from headroom.provenance.lineage import LineageStore
 from headroom.provenance.real import SourceStamp, real_fact
@@ -22,9 +25,55 @@ PROVIDER_EIA = "eia_860_861"
 PROVIDER_FERC1 = "pudl_ferc_form1"
 
 
-def _load_csv(path: Path) -> list[dict]:
-    with path.open(newline="") as fh:
+def _parse_csv(content: bytes) -> list[dict]:
+    """Parse the same immutable bytes used for the table's input digest."""
+    with io.StringIO(content.decode("utf-8"), newline="") as fh:
         return list(csv.DictReader(fh))
+
+
+def _input_identity(
+    region: RegionConfig, root: Path, raw_tables: dict[str, tuple[Path, bytes]],
+    *, snapshot: Snapshot | None = None,
+) -> dict:
+    identity = {
+        "schema_version": 1,
+        "kind": "synthetic" if region.synthetic else "snapshot",
+        "region": region.name,
+        "rto": region.rto,
+        "tables": {
+            table: {
+                "path": path.relative_to(root).as_posix(),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+            for table, (path, content) in raw_tables.items()
+        },
+    }
+    if snapshot is not None:
+        identity["snapshot_id"] = snapshot.root.name
+        identity["snapshot_manifest_sha256"] = snapshot.manifest_sha256
+    return identity
+
+
+def _require_expected_inputs(identity: dict, expected_inputs: dict | None) -> None:
+    if expected_inputs is None:
+        return
+    if not isinstance(expected_inputs, dict):
+        raise ValueError("Expected input identity must be a dictionary of pinned inputs")
+    try:
+        expected_json = json.dumps(expected_inputs, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as e:
+        raise ValueError("Expected input identity contains invalid pins") from e
+    # Canonical JSON comparison also distinguishes schema version 1 from True
+    # or 1.0, which ordinary Python dictionary equality would treat as equal.
+    if expected_json != json.dumps(identity, sort_keys=True, allow_nan=False):
+        expected_tables = expected_inputs.get("tables")
+        changed = (
+            [table for table in REQUIRED_TABLES
+             if expected_tables.get(table) != identity["tables"][table]]
+            if isinstance(expected_tables, dict) else list(REQUIRED_TABLES)
+        )
+        detail = f"tables {', '.join(changed)}" if changed else "snapshot or region metadata"
+        raise ValueError(f"Input identity mismatch: changed inputs or missing pins ({detail})")
 
 
 @dataclass
@@ -43,19 +92,36 @@ class IngestBundle:
     load_930: list[dict] = field(default_factory=list)
     # Per-table provenance stamps (live regions only; empty for fixtures).
     table_stamps: dict[str, SourceStamp] = field(default_factory=dict)
+    input_identity: dict = field(default_factory=dict)
 
 
-def ingest_region(region_name: str, store: LineageStore) -> IngestBundle:
+def ingest_region(
+    region_name: str, store: LineageStore, *, data_dir: Path | None = None,
+    expected_inputs: dict | None = None,
+) -> IngestBundle:
     region = get_region(region_name)
+    if data_dir is not None:
+        region = replace(region, data_dir=Path(data_dir))
     if region.synthetic:
-        return _load_synthetic(region, store)
-    return _load_live(region, store)
+        return _load_synthetic(region, store, expected_inputs=expected_inputs)
+    return _load_live(region, store, expected_inputs=expected_inputs)
 
 
-def _load_synthetic(region: RegionConfig, store: LineageStore) -> IngestBundle:
+def _load_synthetic(
+    region: RegionConfig, store: LineageStore, *, expected_inputs: dict | None = None,
+) -> IngestBundle:
     """Fixture branch: every value becomes a synthetic-sourced Fact (imitated real
     source in `provider`) — structurally never publishable."""
-    d = region.data_dir
+    d = region.data_dir.resolve()
+    raw_tables = {}
+    for table in REQUIRED_TABLES:
+        path = (d / f"{table}.csv").resolve()
+        if not path.is_relative_to(d):
+            raise ValueError(f"Synthetic table {table!r} path escapes the input directory")
+        raw_tables[table] = (path, path.read_bytes())
+    identity = _input_identity(region, d, raw_tables)
+    _require_expected_inputs(identity, expected_inputs)
+    tables = {table: _parse_csv(content) for table, (_, content) in raw_tables.items()}
 
     buses = [
         Bus(
@@ -67,12 +133,12 @@ def _load_synthetic(region: RegionConfig, store: LineageStore) -> IngestBundle:
             role=r["role"],
             weight=float(r["weight"]),
         )
-        for r in _load_csv(d / "buses.csv")
+        for r in tables["buses"]
     ]
 
-    hifld = {r["line_id"]: r for r in _load_csv(d / "hifld_lines.csv")}
-    eia = {r["line_id"]: r for r in _load_csv(d / "eia_lines.csv")}
-    ferc1 = {r["line_id"]: r for r in _load_csv(d / "ferc1_lines.csv")}
+    hifld = {r["line_id"]: r for r in tables["hifld_lines"]}
+    eia = {r["line_id"]: r for r in tables["eia_lines"]}
+    ferc1 = {r["line_id"]: r for r in tables["ferc1_lines"]}
 
     line_skeleton: dict[str, dict] = {}
     voltage_obs: dict[str, list[Fact]] = {}
@@ -160,23 +226,29 @@ def _load_synthetic(region: RegionConfig, store: LineageStore) -> IngestBundle:
         conductor_obs=conductor_obs,
         thermal_obs=thermal_obs,
         cost_obs=cost_obs,
-        constraints=_load_csv(d / "constraints.csv"),
-        congestion=_load_csv(d / "congestion.csv"),
-        planning=_load_csv(d / "planning.csv"),
-        queue=_load_csv(d / "queue.csv"),
-        load_930=_load_csv(d / "load_930.csv"),
+        constraints=tables["constraints"],
+        congestion=tables["congestion"],
+        planning=tables["planning"],
+        queue=tables["queue"],
+        load_930=tables["load_930"],
+        input_identity=identity,
     )
 
 
-def _load_live(region: RegionConfig, store: LineageStore) -> IngestBundle:
+def _load_live(
+    region: RegionConfig, store: LineageStore, *, expected_inputs: dict | None = None,
+) -> IngestBundle:
     """Live branch: read a pinned snapshot's normalized tables and envelope every
-    value with its TRUE source from the snapshot manifest. Fail-closed twice over:
-    no manifest -> Snapshot() raises; table without a stamp -> stamp() raises.
+    value with its TRUE source from the snapshot manifest. All required table
+    stamps, paths and hashes are validated before any values enter lineage.
     Same shapes as the fixture branch (the fixture format IS the post-join format),
     so everything downstream is identical."""
     snap = Snapshot(region.data_dir)
-    n = snap.normalized
-    stamps = {t: snap.stamp(t) for t in snap.manifest["tables"]}
+    raw_tables = snap.read_tables()
+    identity = _input_identity(region, snap.root, raw_tables, snapshot=snap)
+    _require_expected_inputs(identity, expected_inputs)
+    tables = {table: _parse_csv(content) for table, (_, content) in raw_tables.items()}
+    stamps = {t: snap.stamp(t) for t in REQUIRED_TABLES}
     s_h = stamps["hifld_lines"]
     s_e = stamps["eia_lines"]
     s_f = stamps["ferc1_lines"]
@@ -192,13 +264,13 @@ def _load_live(region: RegionConfig, store: LineageStore) -> IngestBundle:
             role=r["role"],
             weight=float(r["weight"]),
         )
-        for r in _load_csv(n / "buses.csv")
+        for r in tables["buses"]
     ]
     _ = s_b  # buses are structural (geometry exemption); stamp kept for the record
 
-    hifld = {r["line_id"]: r for r in _load_csv(n / "hifld_lines.csv")}
-    eia = {r["line_id"]: r for r in _load_csv(n / "eia_lines.csv")}
-    ferc1 = {r["line_id"]: r for r in _load_csv(n / "ferc1_lines.csv")}
+    hifld = {r["line_id"]: r for r in tables["hifld_lines"]}
+    eia = {r["line_id"]: r for r in tables["eia_lines"]}
+    ferc1 = {r["line_id"]: r for r in tables["ferc1_lines"]}
 
     line_skeleton: dict[str, dict] = {}
     voltage_obs: dict[str, list[Fact]] = {}
@@ -291,10 +363,11 @@ def _load_live(region: RegionConfig, store: LineageStore) -> IngestBundle:
         conductor_obs=conductor_obs,
         thermal_obs=thermal_obs,
         cost_obs=cost_obs,
-        constraints=_load_csv(n / "constraints.csv"),
-        congestion=_load_csv(n / "congestion.csv"),
-        planning=_load_csv(n / "planning.csv"),
-        queue=_load_csv(n / "queue.csv"),
-        load_930=_load_csv(n / "load_930.csv"),
+        constraints=tables["constraints"],
+        congestion=tables["congestion"],
+        planning=tables["planning"],
+        queue=tables["queue"],
+        load_930=tables["load_930"],
         table_stamps=stamps,
+        input_identity=identity,
     )
