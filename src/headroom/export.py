@@ -26,6 +26,7 @@ class Delivery:
     mode: str  # "shareable" | "internal-synthetic"
     public_only: bool
     blocked: list[str]  # constraint_ids whose lineage is non-publishable
+    blocked_tables: list[str] = field(default_factory=list)  # non-publishable input tables
     paths: dict[str, str] = field(default_factory=dict)
     manifest: dict = field(default_factory=dict)
 
@@ -82,6 +83,21 @@ def _gate_blocked(result: PipelineResult) -> list[str]:
     return blocked
 
 
+def _tables_blocked(result: PipelineResult) -> list[str]:
+    """Input tables whose stamps fail the gate. The quality report summarizes every
+    input table, so a shareable run needs every table publishable, not only the
+    tables its scores happen to depend on."""
+    blocked = []
+    for node in result.store._nodes.values():
+        if node.lineage_id.startswith("table:") and not node.inputs:
+            try:
+                assert_publishable(node.lineage_id, result.store, result.registry,
+                                   public_only=True)
+            except PublishabilityError:
+                blocked.append(node.lineage_id.removeprefix("table:"))
+    return sorted(blocked)
+
+
 def _write_json(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, indent=2))
 
@@ -117,7 +133,8 @@ def deliver(
     out.mkdir(parents=True, exist_ok=True)
 
     blocked = _gate_blocked(result)
-    if blocked:
+    blocked_tables = _tables_blocked(result)
+    if blocked or blocked_tables:
         # Non-public (synthetic) lineage -> shareable export refused by the gate.
         mode, public_only, suffix = "internal-synthetic", False, ".INTERNAL.synthetic"
     else:
@@ -173,7 +190,7 @@ def deliver(
         paths["parquet"] = str(parquet_path)
 
     return Delivery(
-        mode=mode, public_only=public_only, blocked=blocked,
+        mode=mode, public_only=public_only, blocked=blocked, blocked_tables=blocked_tables,
         paths=paths, manifest=manifest,
     )
 
@@ -194,9 +211,11 @@ def export_shareable_or_raise(result: PipelineResult, out_dir: str | Path) -> De
     """Strict path: refuse to write anything unless the whole shortlist is
     publishable. Used where only a shareable artifact is acceptable."""
     blocked = _gate_blocked(result)
-    if blocked:
+    blocked_tables = _tables_blocked(result)
+    if blocked or blocked_tables:
         raise PublishabilityError(
             f"Shareable export refused: {len(blocked)} scores have non-publishable "
-            f"lineage (e.g. {blocked[:3]}). This is a synthetic/non-public run."
+            f"lineage (e.g. {blocked[:3]}); non-publishable input tables: "
+            f"{blocked_tables}. This is a synthetic/non-public run."
         )
     return deliver(result, out_dir)

@@ -28,7 +28,8 @@ def _report(result, d) -> int:
     if d.mode != "shareable":
         print(
             "  ! shareable export refused by the publishable gate "
-            f"({len(d.blocked)} scores non-publishable) — wrote INTERNAL artifact."
+            f"({len(d.blocked)} scores, {len(d.blocked_tables)} input tables "
+            "non-publishable) — wrote INTERNAL artifact."
         )
     print(f"  {m.n_constraints} flowgates, {len(m.shortlist)} corridors, shortlist k={m.k}")
     print("  top corridors:")

@@ -1,0 +1,35 @@
+request_id,near_bus,mw,fuel,poi,state,to_at_poi,status,match
+GEN-2016-128,B1146,176.0,Wind,Woodring 345kV,OK,OGE,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2017-195,B1691,500.4,Solar,West Gardner 345kV,KS,KCPL,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2017-196,B1691,128.0,Battery/Storage,West Gardner 345kV,KS,KCPL,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2018-028,B1127,200.0,Battery/Storage,Tulsa North 138kV Substation,OK,AEP,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2018-050,B72,200.0,Solar,Longwood 345kV Substation,LA,AEP,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2018-106,B72,165.0,Solar,Longwood 345kV substation,LA,AEP,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2023-SR8,B1216,200.0,Battery/Storage,Hitchland 345 kV Substation,TX,Xcel,IA FULLY EXECUTED/ON SCHEDULE,exact
+GEN-2024-255,B894,300.0,Thermal/Storage,Spring Creek 345 kV Substation,OK,OGE,DISIS STAGE,exact
+GEN-2025-SR25,B1127,200.0,Thermal,Tulsa North 138kV Substation,OK,AEP,IA PENDING,exact
+GEN-2026-PR4,B1216,131.56,Battery/Storage,Hitchland 345kV,TX,SPS,SPECIAL STUDY,exact
+GEN-2026-PR5,B1146,60.4,Battery/Storage,Woodring 345kV Substation,OK,OG&E,SPECIAL STUDY,exact
+GEN-2026-PR6,B1146,49.72,Wind,Woodring 345kV Substation,OK,OG&E,SPECIAL STUDY,exact
+GEN-2026-SR10,B1216,457.0,Battery/Storage,Hitchland 345kV,TX,SPS,SPECIAL STUDY,exact
+GEN-2026-SR13,B1216,208.0,Battery/Storage,Hitchland 345kV,TX,SPS,IA PENDING,exact
+2017-G2,,130.0,Wind,Roundtop - Stegall 115-,NE,WAPA,IA PENDING,none
+2018-G6,,360.0,Solar/Storage,Shiprock 345- Sub,NM,WAPA,IA PENDING,none
+2019-G1,,252.0,Wind,Craig - Ault 345-,WY,WAPA,IA FULLY EXECUTED/ON SCHEDULE,none
+2019-G2,,252.0,Wind,Craig - Ault 345-,WY,WAPA,IA FULLY EXECUTED/ON SCHEDULE,none
+2019-G3,,150.0,Photovoltaic,Ault 345-,CO,WAPA,IA FULLY EXECUTED/ON SCHEDULE,none
+2022-G7,,80.0,Solar/Storage,Sand Creek 115- Switching Station,CO,WAPA,IA PENDING,none
+2023-G2,,150.0,Solar/Storage,Northpark - Terry Ranch 230-,WY,WAPA,FACILITY STUDY STAGE,none
+2023-G3,,150.0,Photovoltaic,Northpark - Terry Ranch 230-,WY,WAPA,FACILITY STUDY STAGE,none
+2025-G1,,250.0,Solar/Storage,Ault 345 station,CO,WAPA,FACILITY STUDY STAGE,none
+21-08242,,350.0,Wind,Rawhide-Roundhouse 230,CO,PRPA,IA FULLY EXECUTED/ON SUSPENSION,none
+21-11121,,150.0,Solar/Storage,Longs Peak 230,CO,PRPA,IA FULLY EXECUTED/ON SCHEDULE,none
+21-11157,,125.0,Battery/Storage,Ault-Carey 230,CO,PRPA,IA FULLY EXECUTED/ON SCHEDULE,none
+22-07251,,250.0,Gas,Rawhide 230,CO,PRPA,IA FULLY EXECUTED/ON SCHEDULE,none
+24-03011,,130.0,Battery/Storage,Crossroads 115,CO,PRPA,IA PENDING,none
+AFS NJG-2025-001,,9.9,Battery/Storage,Strothers Road 161 kV Substation,MO,Evergy,None,none
+AFS NJG-2025-002,,9.9,Battery/Storage,Mochila161kV substation,MO,Evergy,None,none
+AFS NJG-2025-003,,5.65,Gas,Moorhead Northeast Substation 115kV Substation,MN,MRES,None,none
+AFS NJG-2025-004,,5.65,Gas,Moorhead Northeast Substation 115kV Substation,MN,MRES,None,none
+AFS NJG-2025-006,,9.9,Battery/Storage,Bluejay 115/34.5kV Substation,MO,Evergy,None,none
+AFS NJG-2026-001,,9.9,Battery/Storage,Shoal Creek 161kV substation,MO,Evergy,None,none

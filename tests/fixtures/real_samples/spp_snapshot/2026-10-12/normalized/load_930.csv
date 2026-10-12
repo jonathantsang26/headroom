@@ -1,0 +1,5 @@
+snapshot,ba,load_mw,utc_hour,basis,wind_share
+peak,SWPP,54247,2024-07-15T22:00:00+00:00,max demand hour; Demand (MW) (Adjusted),0.2048
+offpeak,SWPP,23816,2024-04-29T09:00:00+00:00,min demand hour; Demand (MW) (Adjusted),0.3388
+shoulder,SWPP,31544,2024-02-29T11:00:00+00:00,median demand hour (lower median); Demand (MW) (Adjusted),0.5553
+windhigh,SWPP,24839,2024-04-07T10:00:00+00:00,max wind share of net generation; Demand (MW) (Adjusted),0.7328
