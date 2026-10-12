@@ -35,7 +35,7 @@ sees a different upstream version raises (`common.require_pin`) instead of build
 | `buses` | `bus_id, name, ba, lat, lon, role, weight` | `n_lines, gen_mw, n_plants` | `hifld_transmission` + contributor `eia_860_861` |
 | `eia_lines` | `line_id, voltage_kv` | | `eia_860_861` |
 | `load_930` | `snapshot, ba, load_mw` | `utc_hour, basis` | `eia_930` |
-| `ferc1_lines` | `line_id, voltage_kv, conductor, thermal_limit_mw, cost_usd` | `record_id, utility_id_ferc1, utility_name, report_year, start_point, end_point, length_mi, standalone_mi, aggregated_mi, structure, num_circuits, voltage_as_reported, flags, match` | `pudl_ferc_form1` |
+| `ferc1_lines` | `line_id, voltage_kv, conductor, thermal_limit_mw, cost_usd` | `record_id, utility_id_ferc1, utility_name, report_year, start_point, end_point, length_mi, standalone_mi, aggregated_mi, structure, num_circuits, voltage_as_reported, flags, match, match_evidence` | `pudl_ferc_form1` + contributor `hifld_transmission` (the join) |
 | `constraints` | `constraint_id, monitored_line, contingency_line, ctype` | `monitored_facility, contingency_facility, contingency_name, spp_constraint_type, contingency_to, contingency_kv` | `spp_binding_constraints` |
 | `congestion` | `constraint_id, monthly_cost_musd, hours_binding` | `shadow_price_sum_usd_per_mw, max_abs_shadow_price, breached_hours, period` | `spp_binding_constraints` |
 | `planning` | `constraint_id, plan, proposed_fix, assigned_cost_musd` | | `spp_itp` |
@@ -55,8 +55,12 @@ Column semantics:
   `length_mi` = stand-alone + aggregated pole-miles (`transmission_line_length_miles`
   + `transmission_line_and_structures_length_miles`). kV reported in volts (161000)
   is divided by 1000 with `voltage_as_reported` kept and `kv_in_volts` in `flags`.
-  `thermal_limit_mw` is blank: Form 1 reports no rating. `line_id` is set only on an
-  unambiguous HIFLD match (both endpoint names and voltage), else blank.
+  `thermal_limit_mw` is blank: Form 1 reports no rating; `cost_usd` is blank where
+  capex is null or 0. `line_id` is set only on an unambiguous HIFLD match (both
+  endpoint names and voltage), else blank. `flags`: `kv_in_volts, voltage_implausible,
+  same_endpoints, aggregate_name, both_length_columns, capex_zero,
+  negative_length_part`. A row with both length columns is often a second circuit on
+  shared structures, so its `length_mi` counts both circuits.
 - `constraints`: SPP DA binding flowgates for `spp_data_year` whose monitored
   element is a line (`ctype=thermal`) or a multi-element/unnamed interface
   (`ctype=interface`); transformer (`XFMR`) constraints are excluded and counted.

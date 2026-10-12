@@ -33,7 +33,7 @@ ferc1_respondents:
   195: AEP Oklahoma Transmission Company, Inc.
   196: AEP Southwestern Transmission Company, Inc.
   273: Golden Spread Electric Cooperative, Inc.
-  354: basin electric power cooperative (pudl determined)
+  354: basin electric power cooperative (pudl determined)  # east system SPP; west is WECC
   315: NorthWestern Corporation                  # SD system is in SPP; MT is not
 
 # SPP market data year (latest complete year of DA binding constraints).
