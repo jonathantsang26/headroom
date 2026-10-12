@@ -30,10 +30,14 @@ def _report(result, d) -> int:
             "  ! shareable export refused by the publishable gate "
             f"({len(d.blocked)} scores non-publishable) — wrote INTERNAL artifact."
         )
-    print(f"  {m.n_constraints} flowgates, shortlist k={m.k}")
-    print(f"  top corridor: {m.shortlist[0]['physical_corridor']} "
-          f"(p_top_k={m.shortlist[0]['p_top_k']:.2f}, "
-          f"{m.shortlist[0]['recommended_get']})")
+    print(f"  {m.n_constraints} flowgates, {len(m.shortlist)} corridors, shortlist k={m.k}")
+    print("  top corridors:")
+    for i, c in enumerate(m.shortlist[:10], start=1):
+        print(f"    {i:2d}. {c['physical_corridor']}  p_top_k={c['p_top_k']:.2f}  "
+              f"composite={c['composite_expected']:.3f} "
+              f"[{c['composite_lo']:.3f}, {c['composite_hi']:.3f}]  {c['recommended_get']}")
+    for gap in result.quality_report.get("gaps", []):
+        print(f"  gap: {gap}")
     for key, path in d.paths.items():
         print(f"  {key}: {path}")
     return 0
