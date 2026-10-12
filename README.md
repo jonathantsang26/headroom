@@ -23,8 +23,9 @@ Map: install `.[app]`, then run `streamlit run src/headroom/app/streamlit_app.py
 .venv/bin/headroom reproduce --manifest data/processed/spp-2026-10-12/run_manifest.json --out data/replayed
 ```
 Sources, pins and the table contract: [ADAPTERS.md](docs/ADAPTERS.md). A rebuild fails
-closed if an upstream no longer serves the pinned version: the SPP queue CSV re-dates
-itself on each refresh, and EIA revises EIA-930.
+if HIFLD, the SPP DA-BC year or the SPP queue date no longer matches its pin; the queue
+CSV re-dates itself on each SPP refresh. EIA revises EIA-930 in place without changing
+the pin, so a later rebuild succeeds with different bytes and a different snapshot hash.
 
 ## Status
 Verified on 2026-10-12. `headroom run --region spp` on snapshot `2026-10-12` writes a
