@@ -36,7 +36,7 @@ sees a different upstream version raises (`common.require_pin`) instead of build
 | `eia_lines` | `line_id, voltage_kv` | | `eia_860_861` |
 | `load_930` | `snapshot, ba, load_mw` | `utc_hour, basis, wind_share` | `eia_930` |
 | `ferc1_lines` | `line_id, voltage_kv, conductor, thermal_limit_mw, cost_usd` | `record_id, utility_id_ferc1, utility_name, report_year, start_point, end_point, length_mi, standalone_mi, aggregated_mi, structure, num_circuits, voltage_as_reported, flags, match, match_evidence` | `pudl_ferc_form1` + contributor `hifld_transmission` (the join) |
-| `constraints` | `constraint_id, monitored_line, contingency_line, ctype` | `monitored_facility, contingency_facility, contingency_name, spp_constraint_type, contingency_to, contingency_kv` | `spp_binding_constraints` |
+| `constraints` | `constraint_id, monitored_line, contingency_line, ctype` | `monitored_facility, monitored_facility_as_reported, contingency_facility, contingency_name, spp_constraint_type, contingency_to, contingency_kv` | `spp_binding_constraints` |
 | `congestion` | `constraint_id, monthly_cost_musd, hours_binding` | `shadow_price_sum_usd_per_mw, max_abs_shadow_price, breached_hours, period` | `spp_binding_constraints` |
 | `planning` | `constraint_id, plan, proposed_fix, assigned_cost_musd` | | `spp_itp` |
 | `queue` | `request_id, near_bus, mw, fuel` | `poi, state, to_at_poi, status, match` | `spp_queue` |
@@ -67,7 +67,10 @@ Column semantics:
 - `constraints`: SPP DA binding flowgates for `spp_data_year` whose monitored
   element is a line (`ctype=thermal`) or a multi-element/unnamed interface
   (`ctype=interface`); transformer (`XFMR`) constraints are excluded and counted.
-  `constraint_id` = `<Constraint Name>|<Contingency Name>`. `monitored_line` is blank
+  `constraint_id` = `<Constraint Name>|<Contingency Name>`. `monitored_facility` is the
+  corridor key: `LN` endpoints sorted (SPP spells some lines both ways round), and
+  multi-element interfaces suffixed with their constraint name (SPP names them all
+  "Multi-Element Constraint"); SPP's text is kept in `monitored_facility_as_reported`. `monitored_line` is blank
   unless resolved to HIFLD (SPP names are model bus names; the bus-location model is
   CEII). `contingency_line` blank for `BASE` or unresolved.
 - `congestion`: one row per constraint: `hours_binding` = distinct binding UTC hours

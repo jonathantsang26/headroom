@@ -142,7 +142,10 @@ def test_constraints_keep_lines_and_interfaces_and_exclude_transformers(snap):
         mon = by_cid[cid][0]["Monitored Facility"]
         assert r["ctype"] == ("thermal" if mon.startswith("LN ") else "interface")
         assert r["monitored_line"] == "" and r["contingency_line"] == ""
-    assert rows["TMP800_29528|BASE"]["monitored_facility"] == "Multi-Element Constraint"
+    multi = rows["TMP800_29528|BASE"]
+    assert multi["monitored_facility_as_reported"] == "Multi-Element Constraint"
+    # distinct interfaces must not share one corridor key
+    assert multi["monitored_facility"] == "Multi-Element Constraint TMP800_29528"
     phase_shifter = rows["SOONER_SONR_SONR_PHSHFT_PS|BASE"]
     assert phase_shifter["ctype"] == "interface" and phase_shifter["monitored_facility"] == ""
 
@@ -153,7 +156,11 @@ def test_constraints_keep_lines_and_interfaces_and_exclude_transformers(snap):
     # SPP spells this flowgate's line both ways round: one row, most frequent spelling.
     spellings = Counter(r["Monitored Facility"] for r in by_cid["SUB1399_1500_1_LN|BASE"])
     assert len(spellings) == 2
-    assert rows["SUB1399_1500_1_LN|BASE"]["monitored_facility"] == spellings.most_common(1)[0][0]
+    sub1399 = rows["SUB1399_1500_1_LN|BASE"]
+    assert sub1399["monitored_facility_as_reported"] == spellings.most_common(1)[0][0]
+    # the corridor key ignores endpoint order, so both spellings give one key
+    keys = {"LN " + " - ".join(sorted(e.strip() for e in m[3:].split(" - "))) for m in spellings}
+    assert keys == {sub1399["monitored_facility"]}
 
     variants = Counter(r["Contingent Facility"] for r in by_cid["TMP272_27635|14756"])
     tmp272 = rows["TMP272_27635|14756"]

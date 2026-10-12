@@ -35,7 +35,8 @@ QUEUE_COLUMNS = (
 )
 CONSTRAINT_FIELDS = [
     "constraint_id", "monitored_line", "contingency_line", "ctype",
-    "monitored_facility", "contingency_facility", "contingency_name",
+    "monitored_facility", "monitored_facility_as_reported", "contingency_facility",
+    "contingency_name",
     "spp_constraint_type", "contingency_to", "contingency_kv",
 ]
 CONGESTION_FIELDS = [
@@ -148,6 +149,18 @@ def _line_key(monitored: str) -> str:
     return " - ".join(sorted(e.strip() for e in ends))
 
 
+def _facility_key(element: str, monitored: str, cid: str) -> str:
+    """The corridor key: one physical element, one key. Lines ignore endpoint order
+    (SPP spells some both ways round); SPP names every multi-element interface
+    "Multi-Element Constraint", so those are keyed by their constraint name; a
+    blank element stays blank (the corridor falls back to the constraint id)."""
+    if element == "ln":
+        return f"LN {_line_key(monitored)}"
+    if element == "multi":
+        return f"{monitored} {cid.split('|', 1)[0]}"
+    return monitored
+
+
 def _constraints_and_congestion(snapshot_dir: Path) -> dict:
     year = _data_year()
     entry = common.raw_entry(snapshot_dir, _bc_raw_name(year))
@@ -219,7 +232,8 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         constraints.append({
             "constraint_id": cid, "monitored_line": "", "contingency_line": "",
             "ctype": "thermal" if element == "ln" else "interface",
-            "monitored_facility": monitored, "contingency_facility": facility,
+            "monitored_facility": _facility_key(element, monitored, cid),
+            "monitored_facility_as_reported": monitored, "contingency_facility": facility,
             "contingency_name": a["cname"], "spp_constraint_type": _mode(a["stype"]),
             "contingency_to": to, "contingency_kv": kv,
         })
@@ -259,7 +273,9 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             f"{multi_cf} carry >1 "
             "contingent-facility spelling; each is one row with the most frequent spelling "
             f"(ties: first sorted). {mixed} flowgates mix element types (classed by the "
-            "most frequent). Monitored elements not resolved to public topology: "
+            "most frequent). monitored_facility is the corridor key: lines with endpoints "
+            "sorted, multi-element interfaces suffixed with their constraint name; SPP's "
+            "spelling is kept in monitored_facility_as_reported. Monitored elements not resolved to public topology: "
             "monitored_line and contingency_line are blank for every row (SPP names are "
             "market-model bus names; the bus-location model is CEII); contingency_line is "
             f"also inherently blank for the {n_base} BASE (no-contingency) flowgates."
