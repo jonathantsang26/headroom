@@ -10,12 +10,24 @@ shareable, which is the product's whole value. Enforced structurally: the
 `publishable` lineage-walk gate (`provenance/gate.py`) refuses to export any value
 whose provenance transitively touches a non-publishable source under `public_only`.
 
-## 2. Synthetic pilot data
-This build ships with **fabricated SPP-SYNTH fixtures** (`tests/fixtures/spp_synth/`),
-not real SPP data. All fixture values carry `source=synthetic_fixture`
-(`publishable: false`), so the gate refuses a shareable export and only ever writes an
-`INTERNAL.synthetic` artifact. A real run swaps in pinned public snapshots; nothing
-downstream changes. **No synthetic ranking should ever be treated as a real result.**
+## 2. Synthetic fixtures vs the real SPP snapshot
+`tests/fixtures/spp_synth/` holds **fabricated SPP-SYNTH fixtures**. All fixture values
+carry `source=synthetic_fixture` (`publishable: false`), so the gate refuses a shareable
+export and only ever writes an `INTERNAL.synthetic` artifact. **No synthetic ranking
+should ever be treated as a real result.** `--region spp` reads a pinned public
+snapshot (see ADAPTERS.md). A shareable export needs every score's lineage and every
+input table's stamp to pass the gate, so a single synthetic-stamped table makes the
+run internal.
+
+What the real snapshot cannot see:
+- **Where SPP's constraints are.** SPP names monitored elements by market-model bus, and
+  the bus-to-location model is CEII (§1). Every flowgate's monitored line is therefore
+  `coverage=unobserved`, and the DC screen, demand pressure and radial test are
+  unobserved: they contribute zero to every composite and cannot change the order.
+- **Ratings.** No public source gives a per-element limit, so rent is Σ|DA shadow price|
+  × an assumed 100–1,200 MW band (mode 250 MW). The band is wide and uncalibrated; see
+  CROSSCHECK.md.
+- **Planning.** SPP ITP needs and costs are PDF only.
 
 ## 3. Muni/co-op blind spot (coverage)
 Non-filers (many municipals and co-ops) don't appear in FERC Form 1. **Do not treat
@@ -33,7 +45,10 @@ and a widened band — flagged, never dropped.
 ## 5. Modeling simplifications (logged, not hidden)
 - `cost_of_inaction` is sampled independently of `rent`/`persistence` though it is
   mechanically ∝ rent (weight 0.10; does not move the ranking). See `model/signals.py`.
-- Signals are normalized by fixed references in `config/scoring.yaml`, not learned.
+- Signals are normalized by fixed references in `config/scoring.yaml`, not learned. They
+  were set on fixtures. On the 2025 SPP data, binding hours exceed `persist_ref_hours`
+  by up to 9.5x, so persistence dominates the composite. Re-referencing is a deliberate,
+  recorded config change that has not been made.
 - `miso-synth` reuses the SPP fixtures to prove region-parameterization; it is NOT a
   real MISO ingest.
 
