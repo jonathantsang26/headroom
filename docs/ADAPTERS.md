@@ -32,9 +32,9 @@ sees a different upstream version raises (`common.require_pin`) instead of build
 | table | required columns | extra columns | stamp source |
 |---|---|---|---|
 | `hifld_lines` | `line_id, from_bus, to_bus, voltage_kv, length_mi` | `hifld_id, owner, sub_1, sub_2, status, type, inferred` | `hifld_transmission` |
-| `buses` | `bus_id, name, ba, lat, lon, role, weight` | `n_lines, gen_mw, n_plants` | `hifld_transmission` + contributor `eia_860_861` |
+| `buses` | `bus_id, name, ba, lat, lon, role, weight` | `n_lines, gen_mw, n_plants, name_basis, ba_plant_id, ba_plant_km, component` | `hifld_transmission` + contributor `eia_860_861` |
 | `eia_lines` | `line_id, voltage_kv` | | `eia_860_861` |
-| `load_930` | `snapshot, ba, load_mw` | `utc_hour, basis` | `eia_930` |
+| `load_930` | `snapshot, ba, load_mw` | `utc_hour, basis, wind_share` | `eia_930` |
 | `ferc1_lines` | `line_id, voltage_kv, conductor, thermal_limit_mw, cost_usd` | `record_id, utility_id_ferc1, utility_name, report_year, start_point, end_point, length_mi, standalone_mi, aggregated_mi, structure, num_circuits, voltage_as_reported, flags, match, match_evidence` | `pudl_ferc_form1` + contributor `hifld_transmission` (the join) |
 | `constraints` | `constraint_id, monitored_line, contingency_line, ctype` | `monitored_facility, contingency_facility, contingency_name, spp_constraint_type, contingency_to, contingency_kv` | `spp_binding_constraints` |
 | `congestion` | `constraint_id, monthly_cost_musd, hours_binding` | `shadow_price_sum_usd_per_mw, max_abs_shadow_price, breached_hours, period` | `spp_binding_constraints` |
@@ -46,6 +46,9 @@ Column semantics:
 - `line_id` = `HIFLD_<ID>`; `bus_id` = `B<n>`, numbered by sorted (lat, lon).
   `from_bus`/`to_bus` come from snapping line endpoints (`bus_snap_m`), not names.
   `length_mi` is geodesic (haversine over the WGS84 polyline), not `Shape__Length`.
+  Footprint: a bus takes the BA of its nearest located EIA-860 plant; lines with both
+  ends in the region's BA are kept, then only the largest connected piece (the DC
+  screen needs one network; the small pieces are labelling/seam artifacts, counted).
 - `buses.role` is `gen` when EIA-860 operating capacity snaps to the bus (`weight` =
   MW), else `load` with `weight` 1.0 (no public nodal load; stated in the note).
 - `eia_lines`: EIA-860/861 publish no line-level voltages. Header-only, `unobserved`.
