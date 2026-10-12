@@ -24,12 +24,24 @@ The manifest format is:
       "source_version": "<pinned-version>",
       "retrieved_at": "<ISO-timestamp-with-timezone>",
       "path": "normalized/<table>.csv",
-      "sha256": "<64-hex-digit-file-digest>"
+      "sha256": "<64-hex-digit-file-digest>",
+      "coverage": "observed | partial | unobserved",
+      "note": "<what the table covers and what it could not obtain>",
+      "contributors": [{"source": "...", "source_version": "...", "retrieved_at": "..."}]
     }
   },
   "raw": {}
 }
 ```
+
+`coverage`, `note` and `contributors` are optional. Coverage defaults to `observed`.
+An `unobserved` table could not be obtained from a public source and is written
+header-only; every signal it feeds becomes a flagged zero that adds nothing to any
+composite (never zero evidence), and the run's `quality_report.json` names the
+signals and scores it affects. `contributors` lists further sources a table was
+derived from (for example bus roles from EIA-860 on HIFLD geometry); each is
+validated like the primary stamp and enters lineage. Column contracts for each
+table are in [ADAPTERS.md](ADAPTERS.md).
 
 ## Build and activate
 
