@@ -12,6 +12,8 @@ data/interim/
 data/processed/
 data/replayed/
 *.parquet
+# Recorded real-data samples are small, committed test inputs.
+!tests/fixtures/**/*.parquet
 *.duckdb
 
 # Run manifests are reproducible from a pinned run; keep examples only.
