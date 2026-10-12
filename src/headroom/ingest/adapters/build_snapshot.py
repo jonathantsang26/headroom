@@ -11,15 +11,19 @@ from pathlib import Path
 from uuid import uuid4
 
 from headroom.ingest.adapters import eia, hifld, pudl_ferc1, spp
+from headroom.ingest.adapters.common import install_ssl_opener
 from headroom.ingest.snapshot import Snapshot, update_manifest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 SPP_ROOT = _REPO_ROOT / "data" / "raw" / "spp"
 
+# Every adapter fetches before any normalizes; normalize runs in this order because
+# the joins depend on it: HIFLD mints buses/line_ids (using EIA-860 plants for the
+# footprint), EIA fills load, FERC 1 joins onto HIFLD lines, SPP maps onto buses.
 ADAPTERS = [
-    ("pudl_ferc1", pudl_ferc1.fetch, pudl_ferc1.normalize),
     ("hifld", hifld.fetch, hifld.normalize),
     ("eia", eia.fetch, eia.normalize),
+    ("pudl_ferc1", pudl_ferc1.fetch, pudl_ferc1.normalize),
     ("spp", spp.fetch, spp.normalize),
 ]
 
@@ -83,10 +87,12 @@ def main(argv: list[str] | None = None) -> int:
     (staged / "normalized").mkdir()
     update_manifest(staged, snapshot_date=args.date)
 
+    install_ssl_opener()
     try:
-        for name, fetch, normalize in ADAPTERS:
+        for name, fetch, _ in ADAPTERS:
             entry = fetch(staged)
             print(f"[fetched] {name}: {entry.get('bytes', '?')} bytes")
+        for name, _, normalize in ADAPTERS:
             normalize(staged)
             print(f"[normalized] {name}")
         Snapshot(staged).require_tables()

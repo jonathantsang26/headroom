@@ -31,9 +31,9 @@ sources:
     bucket: a
     tier: 1
     kind: bulk
-    gives: "Plant locations, utility operations, ownership"
-    access: "EIA bulk download"
-    source_version: "eia_2024_early_release"
+    gives: "Plant locations, balancing authority, generator nameplate (EIA-860/860M)"
+    access: "EIA-860 as redistributed in the pinned PUDL release (out_eia__yearly_plants, out_eia__yearly_generators); no key"
+    source_version: "pudl_v2024.11.0:eia860_2024"
     compliance:
       publishable: true
       basis: "EIA survey data is public domain (US gov)."
@@ -44,8 +44,8 @@ sources:
     tier: 3
     kind: gis
     gives: "Line geometry, voltages, substations"
-    access: "Open GIS (HIFLD / EIA transmission layers)"
-    source_version: "hifld_2024Q4"
+    access: "HIFLD Open ArcGIS FeatureServer Electric_Power_Transmission_Lines (services1.arcgis.com/Hp6G80Pky0om7QvQ), anonymous"
+    source_version: "hifld_open_2023-09-05"   # layer editingInfo.dataLastEditDate
     compliance:
       publishable: true
       basis: "HIFLD Open is public; transmission lines layer is openly licensed."
@@ -56,7 +56,7 @@ sources:
     tier: 1
     kind: api
     gives: "Hourly load & interchange by balancing authority"
-    access: "EIA API (key CENSUS/EIA via env var; works for public series)"
+    access: "EIA-930 six-month bulk CSVs from the EIA Grid Monitor (EIA930_BALANCE_2024_*); no API key"
     source_version: "eia930_2024"
     compliance:
       publishable: true
@@ -80,13 +80,13 @@ sources:
     bucket: b
     tier: 1
     kind: api
-    gives: "Per-binding-constraint monthly cost of congestion (DA market)"
-    access: "SPP Portal monthly congestion summary"
-    source_version: "spp_portal_2025-06"
+    gives: "Hourly DA binding constraints: shadow price ($/MWh), monitored and contingent facility"
+    access: "SPP Portal file browser, da-binding-constraints DA-BC-YEARLY-<year>.csv.zip, anonymous"
+    source_version: "spp_da_bc_2025"
     compliance:
       publishable: true
       basis: "Public monthly congestion-cost-by-constraint summary on the SPP Portal."
-      notes: "Core §6.1 congestion-rent signal, partly pre-computed by SPP."
+      notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating."
 
   - name: spp_fca
     bucket: b
@@ -117,8 +117,8 @@ sources:
     tier: 3
     kind: export
     gives: "Where developers seek headroom; assigned upgrade costs"
-    access: "SPP generator interconnection queue"
-    source_version: "spp_giq_2025-06"
+    access: "SPP OPS portal GI active queue CSV (opsportal.spp.org/Studies/GenerateActiveCSV)"
+    source_version: "spp_giq_2026-10-09"   # the CSV's "Last Updated On" date
     compliance:
       publishable: true
       basis: "SPP publishes the interconnection queue."

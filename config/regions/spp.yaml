@@ -1,0 +1,42 @@
+# Live SPP region spec read by the snapshot adapters. Every choice that shapes the
+# snapshot lives here, so a reviewer can audit the footprint without reading code.
+name: spp
+rto: SPP
+eia_ba_code: SWPP            # EIA balancing-authority code for the SPP RTO
+
+# HIFLD lines are fetched inside this envelope (lon_min, lat_min, lon_max, lat_max),
+# then kept only where both endpoints' nearest EIA-860 plant is in eia_ba_code.
+# The envelope only bounds the download; it does not define the footprint.
+hifld_envelope: [-112.0, 29.0, -89.0, 49.5]
+hifld_min_kv: 100            # HIFLD carries no sub-100 kV lines in this envelope
+bus_snap_m: 300              # endpoints within this distance mint one bus
+plant_snap_km: 25            # EIA-860 plants farther than this from any bus are not attached
+
+# FERC Form 1 respondents whose transmission is in the SPP RTO footprint
+# (utility_id_ferc1 in the pinned PUDL release; names as PUDL reports them).
+# Non-filers (NPPD, OPPD, LES, WFEC, GRDA, Sunflower, Midwest Energy, WAPA,
+# munis/co-ops) have no Form 1 schedule 422: coverage=unobserved, never zero.
+ferc1_respondents:
+  314: Oklahoma Gas and Electric Company
+  230: Southwestern Public Service Company
+  205: Public Service Company of Oklahoma
+  206: Southwestern Electric Power Company
+  225: Westar Energy, Inc.                       # Evergy Kansas Central
+  356: evergy kansas south, inc.
+  254: Kansas City Power & Light Company          # Evergy Metro
+  255: KCP&L Greater Missouri Operations Company  # Evergy Missouri West
+  249: The Empire District Electric Company
+  341: ITC Great Plains, LLC
+  332: Prairie Wind Transmission, LLC
+  343: Transource Missouri, LLC
+  446: Transource Oklahoma, LLC
+  195: AEP Oklahoma Transmission Company, Inc.
+  196: AEP Southwestern Transmission Company, Inc.
+  273: Golden Spread Electric Cooperative, Inc.
+  354: basin electric power cooperative (pudl determined)
+  315: NorthWestern Corporation                  # SD system is in SPP; MT is not
+
+# SPP market data year (latest complete year of DA binding constraints).
+spp_data_year: 2025
+# EIA-930 load year (pinned eia930_2024).
+eia930_year: 2024

@@ -17,6 +17,26 @@ REQUIRED_TABLES = (
     "buses", "hifld_lines", "eia_lines", "ferc1_lines",
     "constraints", "congestion", "planning", "queue", "load_930",
 )
+COVERAGE_LEVELS = ("observed", "partial", "unobserved")
+
+
+def _parse_stamp(t, label: str) -> SourceStamp:
+    if not isinstance(t, dict):
+        raise ValueError(f"{label} must be an object")
+    for key in ("source", "source_version", "retrieved_at"):
+        if not isinstance(t.get(key), str) or not t[key].strip():
+            raise ValueError(f"{label} requires a nonempty {key}")
+    try:
+        retrieved_at = datetime.fromisoformat(t["retrieved_at"])
+    except ValueError as e:
+        raise ValueError(f"{label} has invalid retrieved_at") from e
+    if retrieved_at.utcoffset() is None:
+        raise ValueError(f"{label} requires a timezone-aware retrieved_at")
+    return SourceStamp(
+        source=t["source"],
+        source_version=t["source_version"],
+        retrieved_at=retrieved_at,
+    )
 
 
 def sha256_of(path: Path) -> str:
@@ -65,21 +85,32 @@ class Snapshot:
         return t
 
     def stamp(self, table: str) -> SourceStamp:
+        return _parse_stamp(self._entry(table), f"Snapshot table {table!r}")
+
+    def contributors(self, table: str) -> list[SourceStamp]:
+        """Additional sources a table was derived from (e.g. bus roles from EIA-860
+        on HIFLD bus geometry). Each is validated like the primary stamp."""
+        extra = self._entry(table).get("contributors", [])
+        if not isinstance(extra, list):
+            raise ValueError(f"Snapshot table {table!r} contributors must be a list")
+        return [
+            _parse_stamp(c, f"Snapshot table {table!r} contributor {i}")
+            for i, c in enumerate(extra)
+        ]
+
+    def coverage(self, table: str) -> dict:
+        """Declared coverage of a table: observed (default), partial or unobserved,
+        with the adapter's note. Unobserved never means zero."""
         t = self._entry(table)
-        for key in ("source", "source_version", "retrieved_at"):
-            if not isinstance(t.get(key), str) or not t[key].strip():
-                raise ValueError(f"Snapshot table {table!r} requires a nonempty {key}")
-        try:
-            retrieved_at = datetime.fromisoformat(t["retrieved_at"])
-        except ValueError as e:
-            raise ValueError(f"Snapshot table {table!r} has invalid retrieved_at") from e
-        if retrieved_at.utcoffset() is None:
-            raise ValueError(f"Snapshot table {table!r} requires a timezone-aware retrieved_at")
-        return SourceStamp(
-            source=t["source"],
-            source_version=t["source_version"],
-            retrieved_at=retrieved_at,
-        )
+        cov = t.get("coverage", "observed")
+        if cov not in COVERAGE_LEVELS:
+            raise ValueError(
+                f"Snapshot table {table!r} coverage must be one of {COVERAGE_LEVELS}"
+            )
+        note = t.get("note", "")
+        if not isinstance(note, str):
+            raise ValueError(f"Snapshot table {table!r} note must be a string")
+        return {"coverage": cov, "note": note}
 
     def table_path(self, table: str) -> Path:
         rel = self._entry(table).get("path", f"normalized/{table}.csv")
@@ -105,6 +136,8 @@ class Snapshot:
         """Validate every required input before the loader creates any lineage."""
         for table in names:
             self.stamp(table)
+            self.contributors(table)
+            self.coverage(table)
             path = self.table_path(table)
             if not path.is_file():
                 raise FileNotFoundError(f"Snapshot table {table!r} is not a file: {path}")
@@ -126,6 +159,8 @@ class Snapshot:
         tables = {}
         for table in names:
             self.stamp(table)
+            self.contributors(table)
+            self.coverage(table)
             path = self.table_path(table)
             if not path.is_file():
                 raise FileNotFoundError(f"Snapshot table {table!r} is not a file: {path}")
