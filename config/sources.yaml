@@ -81,8 +81,8 @@ sources:
     tier: 1
     kind: api
     gives: "Hourly DA binding constraints: shadow price ($/MWh), monitored and contingent facility"
-    access: "SPP Portal file browser, da-binding-constraints DA-BC-YEARLY-<year>.csv.zip, anonymous"
-    source_version: "spp_da_bc_2025"
+    access: "SPP Portal file browser, da-binding-constraints /<year>/<MM>/DA-BC-MONTHLY-<year><MM>.csv.zip (the yearly file is incomplete), anonymous"
+    source_version: "spp_da_bc_monthly_2025"
     compliance:
       publishable: true
       basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal."

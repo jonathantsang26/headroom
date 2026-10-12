@@ -17,10 +17,13 @@ from pathlib import Path
 from headroom.ingest.adapters import common
 from headroom.ingest.snapshot import MANIFEST_NAME, sha256_of
 
+# Monthly archives, not DA-BC-YEARLY: the 2025 yearly file is a strict subset of the
+# twelve monthly files (it lacks 6,344 FG rows, 123 constraints, 4.55% of |SP|).
 DA_BC_URL = (
     "https://portal.spp.org/file-browser-api/download/da-binding-constraints"
-    "?path=%2F{year}%2FDA-BC-YEARLY-{year}.csv.zip"
+    "?path=%2F{year}%2F{month:02d}%2FDA-BC-MONTHLY-{year}{month:02d}.csv.zip"
 )
+MONTHS = range(1, 13)
 QUEUE_URL = "https://opsportal.spp.org/Studies/GenerateActiveCSV"
 QUEUE_RAW = "raw:spp_gi_active_queue"
 MAX_CSV_BYTES = 512 << 20  # uncompressed cap for the zipped DA-BC CSV
@@ -61,21 +64,22 @@ def _data_year() -> int:
     return int(common.region_spec()["spp_data_year"])
 
 
-def _bc_member(year: int) -> str:
-    return f"DA-BC-YEARLY-{year}.csv"
+def _bc_member(year: int, month: int) -> str:
+    return f"DA-BC-MONTHLY-{year}{month:02d}.csv"
 
 
-def _bc_raw_name(year: int) -> str:
-    return f"raw:spp_da_bc_{year}"
+def _bc_raw_name(year: int, month: int) -> str:
+    return f"raw:spp_da_bc_{year}{month:02d}"
 
 
-def _bc_pin(path: Path, year: int) -> str:
-    """Pin check from the archive itself: exactly one member, the year's CSV."""
+def _bc_pin(path: Path, year: int, month: int) -> str:
+    """Pin check from the archive itself: exactly one member, that month's CSV."""
     with zipfile.ZipFile(path) as z:
         names = [i.filename for i in z.infolist()]
-    if names != [_bc_member(year)]:
-        raise ValueError(f"SPP DA-BC archive holds {names}; expected [{_bc_member(year)!r}]")
-    return common.require_pin("spp_binding_constraints", f"spp_da_bc_{year}")
+    if names != [_bc_member(year, month)]:
+        raise ValueError(
+            f"SPP DA-BC archive holds {names}; expected [{_bc_member(year, month)!r}]")
+    return common.require_pin("spp_binding_constraints", f"spp_da_bc_monthly_{year}")
 
 
 def _queue_pin(text: str) -> str:
@@ -88,25 +92,29 @@ def _queue_pin(text: str) -> str:
 
 
 def fetch(snapshot_dir: Path) -> dict:
-    """Download the DA-BC zip and the GI active queue CSV verbatim into raw/spp/."""
+    """Download the twelve monthly DA-BC zips and the GI active queue CSV verbatim
+    into raw/spp/."""
     year = _data_year()
     raw = snapshot_dir / "raw" / "spp"
-    bc_url = DA_BC_URL.format(year=year)
-    bc_path = common.download(bc_url, raw / f"{_bc_member(year)}.zip", max_mb=100)
+    entries = {}
+    for month in MONTHS:
+        url = DA_BC_URL.format(year=year, month=month)
+        path = common.download(url, raw / f"{_bc_member(year, month)}.zip", max_mb=100)
+        name = _bc_raw_name(year, month)
+        entries[name] = common.record_raw(snapshot_dir, name, url, path)
+        _bc_pin(path, year, month)
     q_path = common.download(QUEUE_URL, raw / "gi_active_queue.csv", max_mb=20)
-    entries = {
-        _bc_raw_name(year): common.record_raw(snapshot_dir, _bc_raw_name(year), bc_url, bc_path),
-        QUEUE_RAW: common.record_raw(snapshot_dir, QUEUE_RAW, QUEUE_URL, q_path),
-    }
-    _bc_pin(bc_path, year)
+    entries[QUEUE_RAW] = common.record_raw(snapshot_dir, QUEUE_RAW, QUEUE_URL, q_path)
     _queue_pin(q_path.read_bytes().decode("utf-8-sig"))
     return {"bytes": sum(e["bytes"] for e in entries.values()), "raw": entries}
 
 
-def _read_bc(path: Path, year: int) -> list[dict]:
-    """Rows of the zipped DA-BC CSV (headers stripped: SPP writes ' Contingency Name')."""
+def _read_bc(path: Path, year: int, month: int) -> list[dict]:
+    """Rows of one zipped monthly DA-BC CSV (headers stripped: SPP writes
+    ' Contingency Name'). Interval is hour-ending local time, so a row belongs to
+    the month of Interval - 1h (the file's last row is the next month's 00:00)."""
     with zipfile.ZipFile(path) as z:
-        info = z.getinfo(_bc_member(year))
+        info = z.getinfo(_bc_member(year, month))
         if info.file_size > MAX_CSV_BYTES:
             raise ValueError(f"{info.filename} is {info.file_size} bytes uncompressed")
         text = z.read(info).decode("utf-8-sig")
@@ -115,7 +123,14 @@ def _read_bc(path: Path, year: int) -> list[dict]:
     missing = [c for c in BC_COLUMNS if c not in header]
     if missing:
         raise ValueError(f"SPP DA-BC CSV lacks columns {missing}")
-    return [dict(zip(header, (v.strip() for v in r))) for r in reader if r]
+    rows = [dict(zip(header, (v.strip() for v in r))) for r in reader if r]
+    for r in rows:
+        hour = datetime.strptime(r["Interval"], _TIME) - timedelta(hours=1)
+        if (hour.year, hour.month) != (year, month):
+            raise ValueError(
+                f"SPP DA-BC {year}-{month:02d} file has an interval in another month: "
+                f"{r['Interval']}")
+    return rows
 
 
 def _mode(counts: Counter) -> str:
@@ -163,9 +178,14 @@ def _facility_key(element: str, monitored: str, cid: str) -> str:
 
 def _constraints_and_congestion(snapshot_dir: Path) -> dict:
     year = _data_year()
-    entry = common.raw_entry(snapshot_dir, _bc_raw_name(year))
-    version = _bc_pin(entry["abspath"], year)
-    rows = _read_bc(entry["abspath"], year)
+    rows, entries = [], []
+    for month in MONTHS:
+        entry = common.raw_entry(snapshot_dir, _bc_raw_name(year, month))
+        version = _bc_pin(entry["abspath"], year, month)
+        rows += _read_bc(entry["abspath"], year, month)
+        entries.append(entry)
+    # The stamp's retrieval time is the latest of the twelve downloads.
+    entry = max(entries, key=lambda e: e["retrieved_at"])
 
     seen: dict[tuple, tuple] = {}
     dupes = conflicting = 0
@@ -178,9 +198,6 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         name, cname, mon = r["Constraint Name"], r["Contingency Name"], r["Monitored Facility"]
         if not name or not cname or "|" in name or "|" in cname:
             raise ValueError(f"SPP DA-BC row has an unusable constraint name: {name!r}|{cname!r}")
-        # Interval is hour-ending local time: 01/01/<year+1> 00:00 is <year>'s last hour.
-        if (datetime.strptime(r["Interval"], _TIME) - timedelta(hours=1)).year != year:
-            raise ValueError(f"SPP DA-BC {year} file has an interval in another year: {r['Interval']}")
         hour = datetime.strptime(r["GMTIntervalEnd"], _TIME).isoformat()
         value = (r["Shadow Price"], r["State"], r["Contingent Facility"])
         key = (hour, name, mon, cname)
@@ -258,7 +275,8 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         snapshot_dir, "constraints", constraints, CONSTRAINT_FIELDS, **stamp,
         coverage="partial",
         note=(
-            f"SPP DA binding constraints {year}: {len(acc)} flowgates "
+            f"SPP DA binding constraints {year} from the twelve monthly archives "
+            f"(DA-BC-MONTHLY; the yearly file omits rows): {len(acc)} flowgates "
             f"(Constraint Name|Contingency Name) in {len(rows)} hourly rows. Kept "
             f"{len(constraints)}: {kinds['ln']} thermal (LN monitored element) and "
             f"{kinds['multi'] + kinds['blank']} interface ({kinds['multi']} Multi-Element, "

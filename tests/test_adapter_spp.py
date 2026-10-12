@@ -17,10 +17,11 @@ from headroom.ingest.adapters import common, spp
 from headroom.ingest.snapshot import MANIFEST_NAME, Snapshot, update_manifest
 
 FIX = Path(__file__).parent / "fixtures" / "real_samples" / "spp"
-BC_BYTES = (FIX / "da_bc_2025_sample.csv.zip").read_bytes()
+MONTHS = range(1, 13)
+BC_BYTES = {m: (FIX / f"da_bc_2025{m:02d}_sample.csv.zip").read_bytes() for m in MONTHS}
 Q_BYTES = (FIX / "gi_active_queue_sample.csv").read_bytes()
-BC_URL = spp.DA_BC_URL.format(year=2025)
-BC_RAW = "raw:spp_da_bc_2025"
+BC_URL = {m: spp.DA_BC_URL.format(year=2025, month=m) for m in MONTHS}
+BC_RAW = {m: f"raw:spp_da_bc_2025{m:02d}" for m in MONTHS}
 TABLES = ("constraints", "congestion", "planning", "queue")
 
 
@@ -49,7 +50,8 @@ def served(monkeypatch):
 def _fetch(tmp_path, served, bc=BC_BYTES, queue=Q_BYTES):
     snap = tmp_path / "snap"
     update_manifest(snap, snapshot_date="2026-10-12")
-    served.update({BC_URL: bc, spp.QUEUE_URL: queue})
+    served.update({BC_URL[m]: bc[m] for m in MONTHS})
+    served[spp.QUEUE_URL] = queue
     result = spp.fetch(snap)
     served.clear()  # normalize must not touch the network
     return snap, result
@@ -80,11 +82,14 @@ def _write_buses(snap):
 
 
 def _sample_bc():
-    """The sample rows, parsed here independently of the adapter."""
-    with zipfile.ZipFile(FIX / "da_bc_2025_sample.csv.zip") as z:
-        text = z.read("DA-BC-YEARLY-2025.csv").decode("utf-8")
-    rows = list(csv.DictReader(io.StringIO(text)))
-    assert " Contingency Name" in rows[0]  # SPP's header really has the leading space
+    """The sample rows of all twelve months, parsed here independently of the adapter."""
+    rows = []
+    for m in MONTHS:
+        with zipfile.ZipFile(FIX / f"da_bc_2025{m:02d}_sample.csv.zip") as z:
+            text = z.read(f"DA-BC-MONTHLY-2025{m:02d}.csv").decode("utf-8")
+        part = list(csv.DictReader(io.StringIO(text)))
+        assert " Contingency Name" in part[0]  # SPP's header really has the leading space
+        rows += part
     return rows
 
 
@@ -100,12 +105,14 @@ def _sample_queue():
 def test_fetch_records_verbatim_raw_files(tmp_path, served):
     snap, result = _fetch(tmp_path, served)
     raw = _manifest(snap)["raw"]
-    assert set(raw) == {BC_RAW, spp.QUEUE_RAW}
-    assert raw[BC_RAW]["url"] == BC_URL and raw[spp.QUEUE_RAW]["url"] == spp.QUEUE_URL
-    assert raw[BC_RAW]["sha256"] == hashlib.sha256(BC_BYTES).hexdigest()
+    assert set(raw) == {*BC_RAW.values(), spp.QUEUE_RAW}
+    for m in MONTHS:
+        assert raw[BC_RAW[m]]["url"] == BC_URL[m]
+        assert raw[BC_RAW[m]]["sha256"] == hashlib.sha256(BC_BYTES[m]).hexdigest()
+        assert (snap / raw[BC_RAW[m]]["path"]).read_bytes() == BC_BYTES[m]
+    assert raw[spp.QUEUE_RAW]["url"] == spp.QUEUE_URL
     assert raw[spp.QUEUE_RAW]["sha256"] == hashlib.sha256(Q_BYTES).hexdigest()
-    assert (snap / raw[BC_RAW]["path"]).read_bytes() == BC_BYTES
-    assert result["bytes"] == len(BC_BYTES) + len(Q_BYTES)
+    assert result["bytes"] == sum(map(len, BC_BYTES.values())) + len(Q_BYTES)
 
 
 def test_fetch_refuses_a_queue_update_that_is_not_pinned(tmp_path, served):
@@ -114,12 +121,37 @@ def test_fetch_refuses_a_queue_update_that_is_not_pinned(tmp_path, served):
         _fetch(tmp_path, served, queue=newer)
 
 
-def test_fetch_refuses_an_archive_for_another_year(tmp_path, served):
+def test_fetch_refuses_an_archive_for_another_month(tmp_path, served):
     buf = BytesIO()
-    with zipfile.ZipFile(BytesIO(BC_BYTES)) as src, zipfile.ZipFile(buf, "w") as out:
-        out.writestr("DA-BC-YEARLY-2024.csv", src.read("DA-BC-YEARLY-2025.csv"))
-    with pytest.raises(ValueError, match="DA-BC-YEARLY-2025.csv"):
-        _fetch(tmp_path, served, bc=buf.getvalue())
+    with zipfile.ZipFile(BytesIO(BC_BYTES[3])) as src, zipfile.ZipFile(buf, "w") as out:
+        out.writestr("DA-BC-MONTHLY-202502.csv", src.read("DA-BC-MONTHLY-202503.csv"))
+    with pytest.raises(ValueError, match="DA-BC-MONTHLY-202503.csv"):
+        _fetch(tmp_path, served, bc={**BC_BYTES, 3: buf.getvalue()})
+
+
+def test_normalize_refuses_a_row_outside_its_month(tmp_path, served):
+    """March's file carrying a February hour means SPP changed the layout."""
+    with zipfile.ZipFile(BytesIO(BC_BYTES[3])) as src:
+        text = src.read("DA-BC-MONTHLY-202503.csv").decode("utf-8")
+    header, first, rest = text.split("\n", 2)
+    moved = first.replace("03/", "02/", 1)
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as out:
+        out.writestr("DA-BC-MONTHLY-202503.csv", "\n".join([header, moved, rest]))
+    snap, _ = _fetch(tmp_path, served, bc={**BC_BYTES, 3: buf.getvalue()})
+    with pytest.raises(ValueError, match="another month"):
+        spp.normalize(snap)
+
+
+def test_monthly_archives_carry_rows_the_yearly_file_lacks(snap):
+    """TMP452_24498 (LN LIBERAL_ - TEXAS_CO) bound 361 hours in January 2025 and is
+    absent from DA-BC-YEARLY-2025 altogether."""
+    spp.normalize(snap)
+    rows = {r["constraint_id"]: r for r in _table(snap, "constraints")}
+    (cid,) = [c for c in rows if c.startswith("TMP452_24498|")]
+    assert rows[cid]["monitored_facility"] == "LN LIBERAL_ - TEXAS_CO"
+    note = _manifest(snap)["tables"]["constraints"]["note"]
+    assert "twelve monthly archives" in note
 
 
 def test_normalize_refuses_pin_drift(snap, monkeypatch):
@@ -217,7 +249,7 @@ def test_planning_is_header_only_and_unobserved(snap):
     entry = m["tables"]["planning"]
     assert (entry["coverage"], entry["source"], entry["rows"]) == ("unobserved", "spp_itp", 0)
     assert entry["source_version"] == common.registry_pin("spp_itp")
-    assert entry["retrieved_at"] == m["raw"][BC_RAW]["retrieved_at"]
+    assert entry["retrieved_at"] == max(m["raw"][BC_RAW[k]]["retrieved_at"] for k in MONTHS)
     assert "Nothing was retrieved for planning" in entry["note"]
 
 
@@ -272,9 +304,10 @@ def test_tables_are_stamped_and_deterministic(snap):
     spp.normalize(snap)
     m = _manifest(snap)
     assert {t: e["sha256"] for t, e in m["tables"].items()} == first
+    latest = max(m["raw"][BC_RAW[k]]["retrieved_at"] for k in MONTHS)
     for table in ("constraints", "congestion"):
-        assert m["tables"][table]["source_version"] == "spp_da_bc_2025"
-        assert m["tables"][table]["retrieved_at"] == m["raw"][BC_RAW]["retrieved_at"]
+        assert m["tables"][table]["source_version"] == "spp_da_bc_monthly_2025"
+        assert m["tables"][table]["retrieved_at"] == latest
     assert m["tables"]["queue"]["retrieved_at"] == m["raw"][spp.QUEUE_RAW]["retrieved_at"]
     Snapshot(snap).require_tables(TABLES)
 
