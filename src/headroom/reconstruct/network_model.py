@@ -215,7 +215,8 @@ def screen_loadings(
                 cid, 0.0, 0.0, 0.0,
                 store_basis="unobserved: monitored element not resolved to public "
                 "topology; the DC screen cannot see it (not evidence of low loading).",
-                inputs=[f"obs:constraints:{cid}", *context_lineage],
+                # zero because the element cannot be placed, not computed from topology
+                inputs=[f"obs:constraints:{cid}"],
             ))
             continue
         line = lines_by_id[mon]

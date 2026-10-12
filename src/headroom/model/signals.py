@@ -171,7 +171,7 @@ def build_signals(
     # demand pressure: queue MW nearby
     if line is None:
         unobserved("demand_pressure", "constraint location unknown, so nearby queue "
-                   "MW cannot be summed", absent("queue"))
+                   "MW cannot be summed", row or [loading.lineage_id])
     elif _unobserved_table(bb, "queue"):
         unobserved("demand_pressure", "interconnection queue not obtained", absent("queue"))
     else:

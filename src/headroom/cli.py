@@ -37,7 +37,9 @@ def _report(result, d) -> int:
               f"composite={c['composite_expected']:.3f} "
               f"[{c['composite_lo']:.3f}, {c['composite_hi']:.3f}]  {c['recommended_get']}")
     for gap in result.quality_report.get("gaps", []):
-        print(f"  gap: {gap}")
+        print(f"  gap: {gap if len(gap) <= 160 else gap[:157] + '...'}")
+    if result.quality_report.get("gaps"):
+        print("  (full notes in quality_report)")
     for key, path in d.paths.items():
         print(f"  {key}: {path}")
     return 0
