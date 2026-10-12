@@ -125,3 +125,29 @@ def test_invalid_coverage_value_fails_before_lineage(tmp_path, monkeypatch):
     region = _snapshot(tmp_path, monkeypatch, coverage={"queue": {"coverage": "zero"}})
     with pytest.raises(ValueError, match="coverage"):
         run_pipeline(region)
+
+
+def test_missing_rating_is_estimated_imputed_and_traced_to_voltage(tmp_path, monkeypatch):
+    """A placeable monitored line with no public rating gets a typical-rating
+    estimate: flagged imputed, low confidence, derived from the line's voltage."""
+    def blank_rating(d: Path):
+        rows = list(csv.DictReader((d / "ferc1_lines.csv").open()))
+        for r in rows:
+            if r["line_id"] == "LINE_5":
+                r["thermal_limit_mw"] = ""
+        with (d / "ferc1_lines.csv").open("w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=[*rows[0].keys()])
+            w.writeheader()
+            w.writerows(rows)
+
+    result = run_pipeline(_snapshot(tmp_path, monkeypatch, edit=blank_rating))
+    est = result.store.get("thermal_est:LINE_5")
+    assert est is not None and "imputed" in est.flags and est.confidence == "low"
+    assert est.value == 1200.0  # typical 345 kV rating
+    line = result.bucket_a.lines_by_id["LINE_5"]
+    assert line.thermal_limit_mw is est
+    assert est.inputs == [line.voltage_kv.lineage_id]
+    assert result.store.source_closure(est.lineage_id) == {"synthetic_fixture"}
+    # FLOWGATE_3 monitors LINE_5: screened against the estimate, not "no rating"
+    assert result.bucket_b.screen_status["FLOWGATE_3"] != "no_thermal_limit"
+    assert est.lineage_id in result.store.get("loading:FLOWGATE_3").inputs

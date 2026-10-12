@@ -92,3 +92,17 @@ def test_parquet_is_written_and_queryable(tmp_path):
 
     n = duckdb.sql(f"SELECT count(*) FROM '{pq}'").fetchone()[0]
     assert n == result.model.n_constraints
+
+
+def test_manifest_records_each_output_digest_and_leaves_no_temp_files(tmp_path):
+    import hashlib
+
+    d = deliver(run_pipeline("spp-synth"), tmp_path)
+    outputs = d.manifest["outputs"]
+    assert {"scores_json", "shortlist_json", "csv", "quality_report"} <= set(outputs)
+    for entry in outputs.values():
+        data = (tmp_path / entry["path"]).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == entry["sha256"]
+    on_disk = json.loads(Path(d.paths["manifest"]).read_text())
+    assert on_disk["outputs"] == outputs
+    assert not list(tmp_path.glob(".*.tmp"))

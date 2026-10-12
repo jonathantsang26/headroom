@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
+import io
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from headroom.pipeline import PipelineResult
 from headroom.provenance.digests import ranking_digest
@@ -98,29 +103,56 @@ def _tables_blocked(result: PipelineResult) -> list[str]:
     return sorted(blocked)
 
 
-def _write_json(path: Path, obj) -> None:
-    path.write_text(json.dumps(obj, indent=2))
+def _atomic_write(path: Path, data: bytes) -> str:
+    """Write beside the destination and rename, so a reader never sees a partial
+    artifact; returns the bytes' sha256 for the run manifest."""
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return hashlib.sha256(data).hexdigest()
 
 
-def _materialize_parquet(json_path: Path, parquet_path: Path) -> bool:
+def _json_bytes(obj) -> bytes:
+    return json.dumps(obj, indent=2).encode("utf-8")
+
+
+def _csv_bytes(rows: list[dict]) -> bytes:
+    if not rows:
+        return b""
+    buf = io.StringIO(newline="")
+    w = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+    w.writeheader()
+    w.writerows(rows)
+    return buf.getvalue().encode("utf-8")
+
+
+def _materialize_parquet(json_path: Path, parquet_path: Path) -> str | None:
     """Write a queryable Parquet of the ranked rows via DuckDB (Decision 2: keep
-    outputs cleanly queryable so an MCP server is a 1-day add). Best-effort."""
+    outputs cleanly queryable so an MCP server is a 1-day add). Best-effort;
+    returns the file's sha256, or None when it could not be written."""
     try:
         import duckdb
     except ImportError:  # pragma: no cover
-        return False
-    # COPY ...
+        return None
+    tmp = parquet_path.with_name(f".{parquet_path.name}.{uuid4().hex}.tmp")
     jp = str(json_path).replace("'", "''")
-    pp = str(parquet_path).replace("'", "''")
+    pp = str(tmp).replace("'", "''")
     try:
         with duckdb.connect() as con:
             con.execute(
                 f"COPY (SELECT * FROM read_json_auto('{jp}')) "
                 f"TO '{pp}' (FORMAT PARQUET)"
             )
-        return True
+        digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
+        os.replace(tmp, parquet_path)
+        return digest
     except Exception:  # pragma: no cover - depends on filesystem/DuckDB state
-        return False
+        return None
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def deliver(
@@ -144,13 +176,22 @@ def deliver(
     corridors = result.model.shortlist
 
     rows_json = out / f"scores{suffix}.json"
-    _write_json(rows_json, rows)
     shortlist_json = out / f"shortlist{suffix}.json"
-    _write_json(shortlist_json, corridors)
+    csv_path = out / f"shortlist{suffix}.csv"  # the forwarded artifact
+    quality_path = out / f"quality_report{suffix}.json"
+    parquet_path = out / f"scores{suffix}.parquet"
+    manifest_path = out / f"run_manifest{suffix}.json"
 
-    # flat CSV (the forwarded artifact)
-    csv_path = out / f"shortlist{suffix}.csv"
-    _write_csv(csv_path, rows)
+    qr = result.quality_report
+    outputs = {
+        "scores_json": _atomic_write(rows_json, _json_bytes(rows)),
+        "shortlist_json": _atomic_write(shortlist_json, _json_bytes(corridors)),
+        "csv": _atomic_write(csv_path, _csv_bytes(rows)),
+        "quality_report": _atomic_write(quality_path, _json_bytes(qr)),
+    }
+    parquet_sha = _materialize_parquet(rows_json, parquet_path)
+    if parquet_sha is not None:
+        outputs["parquet"] = parquet_sha
 
     manifest = build_run_manifest(
         result.registry,
@@ -166,18 +207,17 @@ def deliver(
     )
     manifest["shortlist_k"] = result.model.k
     manifest["n_constraints"] = result.model.n_constraints
-    qr = result.quality_report
     manifest["coverage"] = {
         "tables": {t: e["coverage"] for t, e in qr.get("tables", {}).items()},
         "unobserved_weight_all": qr.get("unobserved_weight_all", 0.0),
     }
-    quality_path = out / f"quality_report{suffix}.json"
-    _write_json(quality_path, qr)
-    manifest_path = out / f"run_manifest{suffix}.json"
-    _write_json(manifest_path, manifest)
-
-    parquet_path = out / f"scores{suffix}.parquet"
-    have_parquet = _materialize_parquet(rows_json, parquet_path)
+    names = {"scores_json": rows_json, "shortlist_json": shortlist_json, "csv": csv_path,
+             "quality_report": quality_path, "parquet": parquet_path}
+    # Per-file digests of the artifacts written beside this manifest (written last).
+    manifest["outputs"] = {
+        key: {"path": names[key].name, "sha256": digest} for key, digest in outputs.items()
+    }
+    _atomic_write(manifest_path, _json_bytes(manifest))
 
     paths = {
         "scores_json": str(rows_json),
@@ -186,25 +226,13 @@ def deliver(
         "manifest": str(manifest_path),
         "quality_report": str(quality_path),
     }
-    if have_parquet:
+    if parquet_sha is not None:
         paths["parquet"] = str(parquet_path)
 
     return Delivery(
         mode=mode, public_only=public_only, blocked=blocked, blocked_tables=blocked_tables,
         paths=paths, manifest=manifest,
     )
-
-
-def _write_csv(path: Path, rows: list[dict]) -> None:
-    import csv
-
-    if not rows:
-        path.write_text("")
-        return
-    with path.open("w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
 
 
 def export_shareable_or_raise(result: PipelineResult, out_dir: str | Path) -> Delivery:

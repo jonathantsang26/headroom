@@ -31,7 +31,7 @@ sources:
     bucket: a
     tier: 1
     kind: bulk
-    gives: "Plant locations, balancing authority, generator nameplate (EIA-860/860M)"
+    gives: "Plant locations, balancing authority, generator nameplate. The pin's 2024 rows are EIA-860M (monthly), not annual EIA-860"
     access: "EIA-860 as redistributed in the pinned PUDL release (out_eia__yearly_plants, out_eia__yearly_generators); no key"
     source_version: "pudl_v2024.11.0:eia860_2024"
     compliance:
@@ -85,7 +85,7 @@ sources:
     source_version: "spp_da_bc_2025"
     compliance:
       publishable: true
-      basis: "Public monthly congestion-cost-by-constraint summary on the SPP Portal."
+      basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal."
       notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating."
 
   - name: spp_fca

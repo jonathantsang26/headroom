@@ -17,15 +17,20 @@ python3 -m venv .venv
 Map: install `.[app]`, then run `streamlit run src/headroom/app/streamlit_app.py`.
 
 ## Run on public data (SPP)
+Replay the verified run from its archived snapshot (`data/raw/spp/2026-10-12`, kept
+out of git):
 ```bash
-.venv/bin/python -m headroom.ingest.adapters.build_snapshot --date 2026-10-12   # ~1 min, no keys
+.venv/bin/python -m headroom.ingest.adapters.build_snapshot --date 2026-10-12 --activate-only
 .venv/bin/headroom run --region spp --out data/processed/spp-2026-10-12
 .venv/bin/headroom reproduce --manifest data/processed/spp-2026-10-12/run_manifest.json --out data/replayed
 ```
-Sources, pins and the table contract: [ADAPTERS.md](docs/ADAPTERS.md). A rebuild fails
-if HIFLD, the SPP DA-BC year or the SPP queue date no longer matches its pin; the queue
-CSV re-dates itself on each SPP refresh. EIA revises EIA-930 in place without changing
-the pin, so a later rebuild succeeds with different bytes and a different snapshot hash.
+A fresh build (`build_snapshot --date <today>`, about 1 minute, no keys) fetches every
+source again and fails if HIFLD, the SPP DA-BC year or the SPP queue date no longer
+matches its pin in `config/sources.yaml`. SPP re-dates the queue CSV on each refresh,
+so a new build first needs `spp_queue` re-pinned. That gives a new dated snapshot and a
+new digest; the archived run stays replayable only with its original pins. EIA revises
+EIA-930 in place without changing the pin, so its bytes and hashes can differ between
+builds. Sources, pins and the table contract: [ADAPTERS.md](docs/ADAPTERS.md).
 
 ## Status
 Verified on 2026-10-12. `headroom run --region spp` on snapshot `2026-10-12` writes a
