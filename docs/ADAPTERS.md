@@ -63,9 +63,11 @@ Column semantics:
   `constraint_id` = `<Constraint Name>|<Contingency Name>`. `monitored_line` is blank
   unless resolved to HIFLD (SPP names are model bus names; the bus-location model is
   CEII). `contingency_line` blank for `BASE` or unresolved.
-- `congestion`: one row per constraint: `hours_binding` = distinct binding hours,
-  `shadow_price_sum_usd_per_mw` = sum of |shadow price| over those hours
-  (duplicate interval rows removed). `monthly_cost_musd` blank: SPP posts no $ figure.
+- `congestion`: one row per constraint: `hours_binding` = distinct binding UTC hours
+  (`GMTIntervalEnd`), `shadow_price_sum_usd_per_mw` = sum of |shadow price| over those
+  hours. SPP's local `Interval` is hour-ending and repeats on the DST fall-back hour;
+  those are distinct UTC hours and are kept, so dedupe keys on UTC. `monthly_cost_musd`
+  blank: SPP posts no $ figure.
 - `planning`: header-only, `unobserved` unless a machine-readable ITP source is fetched.
 - `queue`: active GI requests (not withdrawn, not in commercial operation). `near_bus`
   set only on an unambiguous POI-name match to a bus name, else blank.
