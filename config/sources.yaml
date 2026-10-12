@@ -74,7 +74,7 @@ sources:
     compliance:
       publishable: true
       basis: "SPP posts Integrated Marketplace data publicly on the SPP Portal."
-      notes: ""
+      notes: "SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_binding_constraints
     bucket: b
@@ -86,7 +86,7 @@ sources:
     compliance:
       publishable: true
       basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal."
-      notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating."
+      notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_fca
     bucket: b
@@ -98,7 +98,7 @@ sources:
     compliance:
       publishable: true
       basis: "Published SPP engineering study."
-      notes: "§6.3 planning-exhaust ground truth."
+      notes: "§6.3 planning-exhaust ground truth. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_itp
     bucket: b
@@ -110,7 +110,7 @@ sources:
     compliance:
       publishable: true
       basis: "Published SPP Integrated Transmission Planning assessment."
-      notes: "§6.3 planning items -> planning_items table."
+      notes: "§6.3 planning items -> planning_items table. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_queue
     bucket: b
@@ -122,7 +122,7 @@ sources:
     compliance:
       publishable: true
       basis: "SPP publishes the interconnection queue."
-      notes: "demand_pressure signal."
+      notes: "demand_pressure signal. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   # ---- Meta: fabricated test/demo data (NEVER publishable) ----
   # All fixture-derived values carry source: synthetic_fixture, so the lineage-walk
