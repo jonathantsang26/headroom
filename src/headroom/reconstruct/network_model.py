@@ -22,8 +22,11 @@ def estimate_reactance_pu(length_mi: float, voltage_kv: float) -> float:
     return (_X_OHM_PER_MILE * length_mi) / z_base
 
 
-def attach_reactance(lines: list[Line], store: LineageStore) -> None:
-    """Estimate each line's impedance and attach it as a bounded (imputed) Range."""
+def attach_reactance(
+    lines: list[Line], store: LineageStore, *, length_lineage: list[str] = (),
+) -> None:
+    """Estimate each line's impedance and attach it as a bounded (imputed) Range,
+    derived from its triangulated voltage and the table that gave its length."""
     for ln in lines:
         x = estimate_reactance_pu(ln.length_mi, float(ln.voltage_kv.value))
         ln.reactance_pu = store.add(
@@ -34,6 +37,7 @@ def attach_reactance(lines: list[Line], store: LineageStore) -> None:
                 basis="Impedance estimated from length+voltage (0.8 ohm/mi); imputed.",
                 provider="hifld_transmission",
                 lineage_id=f"reactance:{ln.line_id}",
+                inputs=[ln.voltage_kv.lineage_id, *length_lineage],
             )
         )
 
@@ -180,16 +184,23 @@ def _loadings_over_snapshots(
 
 
 def screen_loadings(
-    model: DCModel,
+    model: DCModel | None,
     lines_by_id: dict[str, Line],
     constraints: list[Constraint],
     injections: dict[str, np.ndarray],
     store: LineageStore,
+    *,
+    context_lineage: list[str] = (),
 ) -> tuple[dict[str, "object"], dict[str, str]]:
     """For EVERY flowgate, emit a loading Range (lo=min, expected=mean, hi=worst) and
     a `screen_status`. A contingency that disconnects the grid is INFORMATION, not a
     reason to drop the constraint (flag, never drop): we fall back to the base-case
-    (N-0) loading, widen the band, and mark `screen_status="n1_disconnect"`."""
+    (N-0) loading, widen the band, and mark `screen_status="n1_disconnect"`.
+
+    A flowgate whose monitored element is not in public topology gets an
+    `unmapped_monitored` status and a degenerate zero Range marked unobserved — the
+    screen cannot see it, which is not evidence of low loading. `context_lineage`
+    names the tables the DC model was built from (topology, buses, load)."""
     from headroom.provenance.envelope import Range  # keep module top light
 
     loading: dict[str, Range] = {}
@@ -197,14 +208,31 @@ def screen_loadings(
 
     for c in constraints:
         cid = c.constraint_id
-        mon_idx = model.line_index[c.monitored_line]
-        thermal_fact = lines_by_id[c.monitored_line].thermal_limit_mw
+        mon = c.monitored_line
+        if model is None or mon is None or mon not in model.line_index:
+            status[cid] = "unmapped_monitored"
+            loading[cid] = store.add(_loading_range(
+                cid, 0.0, 0.0, 0.0,
+                store_basis="unobserved: monitored element not resolved to public "
+                "topology; the DC screen cannot see it (not evidence of low loading).",
+                inputs=[f"obs:constraints:{cid}", *context_lineage],
+            ))
+            continue
+        line = lines_by_id[mon]
+        thermal_fact = line.thermal_limit_mw
+        inputs = [line.reactance_pu.lineage_id if line.reactance_pu
+                  else line.voltage_kv.lineage_id, *context_lineage]
+        ctg = lines_by_id.get(c.contingency_line) if c.contingency_line else None
+        if ctg is not None and ctg.reactance_pu is not None:
+            inputs.append(ctg.reactance_pu.lineage_id)
+        mon_idx = model.line_index[mon]
         if thermal_fact is None or not thermal_fact.value:
             status[cid] = "no_thermal_limit"
             loading[cid] = store.add(
                 _loading_range(cid, 0.0, 1.0, 2.0, store_basis="indeterminate: no "
-                "thermal limit on monitored line; treated as uncertain."))
+                "thermal limit on monitored line; treated as uncertain.", inputs=inputs))
             continue
+        inputs.append(thermal_fact.lineage_id)
         thermal = float(thermal_fact.value)
 
         base = _loadings_over_snapshots(model, mon_idx, thermal, injections, ())
@@ -213,7 +241,23 @@ def screen_loadings(
             status[cid] = "no_base_flows"
             loading[cid] = store.add(
                 _loading_range(cid, 0.0, 1.0, 2.0, store_basis="indeterminate: no "
-                "base-case flows (no snapshots or disconnected base network).")
+                "base-case flows (no snapshots or disconnected base network).",
+                inputs=inputs)
+            )
+            continue
+        if c.contingency_line and c.contingency_line not in model.line_index:
+            # contingency named but not placeable: N-0 only, widened, flagged
+            status[cid] = "contingency_unmapped"
+            loading[cid] = store.add(
+                _loading_range(
+                    cid,
+                    min(base) * 0.8,
+                    float(np.mean(base)),
+                    max(base) * 1.5,
+                    store_basis="Contingency element not resolved to public topology; "
+                    "base-case loading with a widened band — screen indeterminate.",
+                    inputs=inputs,
+                )
             )
             continue
         if c.contingency_line:
@@ -234,6 +278,7 @@ def screen_loadings(
                     max(base) * 1.5,
                     store_basis="N-1 contingency disconnects the grid; base-case "
                     "loading with a widened band — screen indeterminate.",
+                    inputs=inputs,
                 )
             )
         else:
@@ -247,20 +292,24 @@ def screen_loadings(
                     max(use),
                     store_basis="DC N-1 screen: monitored-line loading over load "
                     "snapshots (screen only, not an AC study).",
+                    inputs=inputs,
                 )
             )
     return loading, status
 
 
-def _loading_range(cid: str, lo: float, exp: float, hi: float, *, store_basis: str):
+def _loading_range(cid: str, lo: float, exp: float, hi: float, *, store_basis: str,
+                   inputs: list[str]):
     """Build a loading Range directly from min/mean/max (no point-and-band detour)."""
-    from headroom.provenance.synthetic import synthetic_range
+    from headroom.provenance.derived import derived_range
 
-    return synthetic_range(
+    return derived_range(
         lo=lo,
         expected=exp,
         hi=hi,
         basis=store_basis,
+        stage="reconstruct.network_model",
         provider="hifld_transmission",
         lineage_id=f"loading:{cid}",
+        inputs=inputs,
     )

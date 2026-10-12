@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from headroom.model.get_match import recommend_get
+from headroom.model.get_match import get_basis, recommend_get
 from headroom.model.score import composite_from_percentiles
 from headroom.model.signals import (
     _adjacency,
@@ -74,13 +74,13 @@ class ModelResult:
     extras: dict = field(default_factory=dict)  # radial flags, get rationale, etc.
 
 
-def _provenance(signals: dict, bb: BucketBResult, cid: str) -> str:
+def _provenance(composite, bb: BucketBResult, cid: str, store: LineageStore) -> str:
     bits = [f"rent={bb.congestion[cid].rent_musd.provider}" if cid in bb.congestion else "rent=none",
             f"loading={bb.screen_status.get(cid, 'ok')}"]
     if cid in bb.planning:
         bits.append(f"planning={bb.planning[cid].plan}")
-    sources = sorted({s.source for s in signals.values()})
-    bits.append("data=" + ",".join(sources))
+    # the registered root sources this score's lineage actually reaches
+    bits.append("data=" + ",".join(sorted(store.source_closure(composite.lineage_id))))
     return "; ".join(bits)
 
 
@@ -96,13 +96,14 @@ def run_model(
     adjacency = _adjacency(bucket_a.lines)
 
     signals_by_cid: dict[str, dict] = {}
-    radial_by_cid: dict[str, bool] = {}
+    coverage_by_cid: dict[str, dict] = {}
+    radial_by_cid: dict[str, bool | None] = {}  # None: not on public topology
     for c in bucket_b.constraints:
-        line = lines_by_id[c.monitored_line]
-        signals_by_cid[c.constraint_id] = build_signals(
+        line = lines_by_id.get(c.monitored_line) if c.monitored_line else None
+        signals_by_cid[c.constraint_id], coverage_by_cid[c.constraint_id] = build_signals(
             c, line, bucket_b, cfg.references, adjacency, store
         )
-        radial_by_cid[c.constraint_id] = is_radial(line, degree)
+        radial_by_cid[c.constraint_id] = is_radial(line, degree) if line else None
 
     p_top, pcts, k = rank_stability(
         signals_by_cid, cfg.weights,
@@ -114,16 +115,21 @@ def run_model(
         cid = c.constraint_id
         signals = signals_by_cid[cid]
         comp = composite_from_percentiles(cid, pcts[cid], signals, store)
-        get = recommend_get(c, radial=radial_by_cid[cid], signals=signals)
+        radial = radial_by_cid[cid]
+        loading_observed = coverage_by_cid[cid]["loading"] == "observed"
+        get = recommend_get(c, radial=bool(radial), signals=signals,
+                            loading_observed=loading_observed)
         scores.append(
             Score(
                 constraint_id=cid,
-                physical_corridor=c.monitored_line,
+                physical_corridor=c.corridor,
                 signals=signals,
                 composite=comp,
                 p_top_k=p_top[cid],
                 recommended_get=get,
-                provenance=_provenance(signals, bucket_b, cid),
+                provenance=_provenance(comp, bucket_b, cid, store),
+                signal_coverage=coverage_by_cid[cid],
+                get_basis=get_basis(c, radial=radial, loading_observed=loading_observed),
             )
         )
 

@@ -15,9 +15,16 @@ def recommend_get(
     *,
     radial: bool,
     signals: dict[str, Range],
+    loading_observed: bool = True,
 ) -> GET:
-    loading = signals["loading"].expected
+    """When the DC screen cannot see the monitored element (`loading_observed`
+    False), "heavy" falls back on the market record: a constraint observed binding
+    in the day-ahead market flowed at its limit in those hours."""
     persistence = signals["persistence"].expected
+    if loading_observed:
+        heavy = signals["loading"].expected >= _HEAVY
+    else:
+        heavy = signals["rent"].expected > 0.0 and persistence > 0.0
 
     if constraint.ctype == "loopflow":
         return "Topology Optimization"
@@ -28,11 +35,19 @@ def recommend_get(
     # thermal
     if radial:
         # weather-exposed radial line -> rate it dynamically
-        if persistence >= _PERSISTENT and loading >= _HEAVY:
+        if persistence >= _PERSISTENT and heavy:
             return "Combination"
         return "Dynamic Line Rating"
 
     # meshed thermal: push flow off the overloaded path
-    if loading >= _HEAVY and persistence >= _PERSISTENT:
+    if heavy and persistence >= _PERSISTENT:
         return "Combination"
     return "Advanced Power Flow Control"
+
+
+def get_basis(constraint: Constraint, *, radial: bool | None, loading_observed: bool) -> str:
+    """One line on what the GET rule could see for this flowgate."""
+    bits = [f"ctype={constraint.ctype}"]
+    bits.append("radial=unknown(treated meshed)" if radial is None else f"radial={radial}")
+    bits.append("heavy=DC screen" if loading_observed else "heavy=binding in DA market")
+    return "; ".join(bits)

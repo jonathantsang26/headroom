@@ -47,12 +47,22 @@ class Line(BaseModel):
 
 class Constraint(BaseModel):
     """A flowgate = monitored element + contingency. The atomic SCORED unit
-    (Decision 4). Links to the physical line(s) via `monitored_line`."""
+    (Decision 4). Links to the physical line(s) via `monitored_line`; when the
+    monitored element cannot be resolved to public topology, `monitored_line` is
+    None and `coverage` is "unobserved" (the line exists; we cannot place it)."""
 
     constraint_id: str
-    monitored_line: str
+    monitored_line: str | None
     contingency_line: str | None
     ctype: ConstraintType
+    monitored_facility: str | None = None  # as named by the RTO
+    contingency_facility: str | None = None
+    coverage: Coverage = "observed"
+
+    @property
+    def corridor(self) -> str:
+        """Footprint-dedup key: the resolved line, else the RTO's facility name."""
+        return self.monitored_line or self.monitored_facility or self.constraint_id
 
 
 class CongestionObs(BaseModel):
@@ -71,9 +81,10 @@ class PlanningItem(BaseModel):
 
 class QueueItem(BaseModel):
     request_id: str
-    near_bus: str
+    near_bus: str  # "" when the POI could not be placed on a bus
     mw: float
     fuel: str
+    lineage_ids: list[str] = Field(default_factory=list)
 
 
 class Score(BaseModel):
@@ -87,3 +98,6 @@ class Score(BaseModel):
     p_top_k: float
     recommended_get: GET
     provenance: str  # one-line trail
+    # signal -> observed | unobserved (unobserved signals contribute nothing)
+    signal_coverage: dict[str, Coverage] = Field(default_factory=dict)
+    get_basis: str = ""

@@ -26,6 +26,7 @@ def planning_items(rows: list[dict], store: LineageStore) -> dict[str, PlanningI
                 basis=f"{r['plan']} assigned upgrade cost, -20%/+40% band ($M).",
                 provider=provider,
                 lineage_id=f"plancost:{cid}",
+                inputs=r.get("_lineage") or [],
             )
         )
         out[cid] = PlanningItem(

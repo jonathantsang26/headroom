@@ -4,7 +4,7 @@ threads through every stage, so provenance is continuous from raw value to score
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from headroom.ingest import ingest_region
@@ -13,6 +13,7 @@ from headroom.model import ModelResult, ScoringConfig, run_model
 from headroom.provenance.lineage import LineageStore
 from headroom.provenance.runtime import runtime_identity
 from headroom.quality import BucketAResult, run_bucket_a
+from headroom.quality.report import build_quality_report
 from headroom.reconstruct import BucketBResult, run_bucket_b
 from headroom.sources import SourceRegistry, load_registry
 
@@ -28,6 +29,7 @@ class PipelineResult:
     scoring: ScoringConfig
     input_identity: dict
     runtime: dict
+    quality_report: dict = field(default_factory=dict)
 
 
 def run_pipeline(
@@ -61,4 +63,5 @@ def run_pipeline(
         scoring=scoring,
         input_identity=bundle.input_identity,
         runtime=runtime,
+        quality_report=build_quality_report(bundle, bucket_a, bucket_b, model),
     )

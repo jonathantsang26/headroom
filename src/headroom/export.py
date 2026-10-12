@@ -44,6 +44,7 @@ def scoring_to_manifest(scoring) -> dict:
 def build_score_rows(result: PipelineResult) -> list[dict]:
     """One flat row per flowgate, ranked, with signal expecteds + provenance."""
     rows = []
+    meta = {c.constraint_id: c for c in result.bucket_b.constraints}
     for rank, s in enumerate(result.model.scores, start=1):
         row = {
             "rank": rank,
@@ -55,10 +56,15 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
             "composite_hi": round(s.composite.hi, 4),
             "recommended_get": s.recommended_get,
             "screen_status": result.bucket_b.screen_status.get(s.constraint_id, ""),
+            "monitored_facility": meta[s.constraint_id].monitored_facility or "",
+            "contingency_facility": meta[s.constraint_id].contingency_facility or "",
+            "get_basis": s.get_basis,
             "provenance": s.provenance,
         }
         for name in _SIGNAL_ORDER:
             row[f"sig_{name}"] = round(s.signals[name].expected, 4)
+        for name in _SIGNAL_ORDER:
+            row[f"cov_{name}"] = s.signal_coverage.get(name, "observed")
         rows.append(row)
     return rows
 
@@ -143,6 +149,13 @@ def deliver(
     )
     manifest["shortlist_k"] = result.model.k
     manifest["n_constraints"] = result.model.n_constraints
+    qr = result.quality_report
+    manifest["coverage"] = {
+        "tables": {t: e["coverage"] for t, e in qr.get("tables", {}).items()},
+        "unobserved_weight_all": qr.get("unobserved_weight_all", 0.0),
+    }
+    quality_path = out / f"quality_report{suffix}.json"
+    _write_json(quality_path, qr)
     manifest_path = out / f"run_manifest{suffix}.json"
     _write_json(manifest_path, manifest)
 
@@ -154,6 +167,7 @@ def deliver(
         "shortlist_json": str(shortlist_json),
         "csv": str(csv_path),
         "manifest": str(manifest_path),
+        "quality_report": str(quality_path),
     }
     if have_parquet:
         paths["parquet"] = str(parquet_path)

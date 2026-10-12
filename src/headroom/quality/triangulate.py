@@ -6,7 +6,6 @@ from collections import Counter
 
 from headroom.provenance.envelope import Fact
 from headroom.provenance.lineage import LineageStore
-from headroom.provenance.synthetic import SYNTHETIC_RETRIEVED_AT
 
 
 def triangulate_voltage(
@@ -47,7 +46,8 @@ def triangulate_voltage(
             source="quality.triangulate",
             provider=observations[0].provider if observations else None,
             source_version="quality",
-            retrieved_at=SYNTHETIC_RETRIEVED_AT,
+            # as fresh as the freshest observation it combines
+            retrieved_at=max(o.retrieved_at for o in observations),
             lineage_id=f"fact:{line_id}:voltage",
             inputs=[o.lineage_id for o in observations],
         )

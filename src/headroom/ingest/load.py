@@ -1,6 +1,7 @@
 """Ingest: read the (pinned, immutable) region data and envelope every value at the
 boundary. For `spp-synth` the data is the committed fixtures; values become
-synthetic-sourced `Fact`s tagged with the real provider they imitate."""
+synthetic-sourced `Fact`s tagged with the real provider they imitate. For a live
+region every value carries the stamp of the snapshot table it came from."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ import hashlib
 import io
 import json
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 
 from headroom.ingest.region import RegionConfig, get_region
@@ -16,13 +18,26 @@ from headroom.ingest.snapshot import REQUIRED_TABLES, Snapshot
 from headroom.provenance.envelope import Fact
 from headroom.provenance.lineage import LineageStore
 from headroom.provenance.real import SourceStamp, real_fact
-from headroom.provenance.synthetic import synthetic_fact
+from headroom.provenance.synthetic import SYNTHETIC_RETRIEVED_AT, synthetic_fact
 from headroom.schema.entities import Bus
 
 # Imitated real-source names for triangulation (recorded in each value's provider).
 PROVIDER_HIFLD = "hifld_transmission"
 PROVIDER_EIA = "eia_860_861"
 PROVIDER_FERC1 = "pudl_ferc_form1"
+
+# The real source each fixture-format table imitates (provider of its table Fact).
+TABLE_PROVIDER = {
+    "buses": PROVIDER_HIFLD,
+    "hifld_lines": PROVIDER_HIFLD,
+    "eia_lines": PROVIDER_EIA,
+    "ferc1_lines": PROVIDER_FERC1,
+    "constraints": "spp_binding_constraints",
+    "congestion": "spp_binding_constraints",
+    "planning": "spp_itp",
+    "queue": "spp_queue",
+    "load_930": "eia_930",
+}
 
 
 def _parse_csv(content: bytes) -> list[dict]:
@@ -85,6 +100,7 @@ class IngestBundle:
     conductor_obs: dict[str, Fact]
     thermal_obs: dict[str, Fact]
     cost_obs: dict[str, Fact]
+    # Operational rows; each carries "_lineage": the Fact ids its values came from.
     constraints: list[dict] = field(default_factory=list)
     congestion: list[dict] = field(default_factory=list)
     planning: list[dict] = field(default_factory=list)
@@ -93,6 +109,11 @@ class IngestBundle:
     # Per-table provenance stamps (live regions only; empty for fixtures).
     table_stamps: dict[str, SourceStamp] = field(default_factory=dict)
     input_identity: dict = field(default_factory=dict)
+    # table -> Fact ids standing for "this whole table" (used by values derived
+    # from a table's content or from a row's absence in it).
+    table_lineage: dict[str, list[str]] = field(default_factory=dict)
+    # table -> {"coverage": observed|partial|unobserved, "note": str}
+    table_coverage: dict[str, dict] = field(default_factory=dict)
 
 
 def ingest_region(
@@ -122,116 +143,10 @@ def _load_synthetic(
     identity = _input_identity(region, d, raw_tables)
     _require_expected_inputs(identity, expected_inputs)
     tables = {table: _parse_csv(content) for table, (_, content) in raw_tables.items()}
-
-    buses = [
-        Bus(
-            bus_id=r["bus_id"],
-            name=r["name"],
-            ba=r["ba"],
-            lat=float(r["lat"]),
-            lon=float(r["lon"]),
-            role=r["role"],
-            weight=float(r["weight"]),
-        )
-        for r in tables["buses"]
-    ]
-
-    hifld = {r["line_id"]: r for r in tables["hifld_lines"]}
-    eia = {r["line_id"]: r for r in tables["eia_lines"]}
-    ferc1 = {r["line_id"]: r for r in tables["ferc1_lines"]}
-
-    line_skeleton: dict[str, dict] = {}
-    voltage_obs: dict[str, list[Fact]] = {}
-    conductor_obs: dict[str, Fact] = {}
-    thermal_obs: dict[str, Fact] = {}
-    cost_obs: dict[str, Fact] = {}
-
-    for line_id, h in hifld.items():
-        line_skeleton[line_id] = {
-            "from_bus": h["from_bus"],
-            "to_bus": h["to_bus"],
-            "length_mi": float(h["length_mi"]),
-        }
-        obs: list[Fact] = []
-        # voltage observed independently by three providers
-        obs.append(
-            store.add(
-                synthetic_fact(
-                    value=float(h["voltage_kv"]),
-                    provider=PROVIDER_HIFLD,
-                    unit="kV",
-                    as_reported=h["voltage_kv"],
-                    lineage_id=f"obs:{PROVIDER_HIFLD}:{line_id}:voltage",
-                )
-            )
-        )
-        if line_id in eia:
-            obs.append(
-                store.add(
-                    synthetic_fact(
-                        value=float(eia[line_id]["voltage_kv"]),
-                        provider=PROVIDER_EIA,
-                        unit="kV",
-                        as_reported=eia[line_id]["voltage_kv"],
-                        lineage_id=f"obs:{PROVIDER_EIA}:{line_id}:voltage",
-                    )
-                )
-            )
-        if line_id in ferc1:
-            f = ferc1[line_id]
-            obs.append(
-                store.add(
-                    synthetic_fact(
-                        value=float(f["voltage_kv"]),
-                        provider=PROVIDER_FERC1,
-                        unit="kV",
-                        as_reported=f["voltage_kv"],
-                        lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:voltage",
-                    )
-                )
-            )
-            conductor_obs[line_id] = store.add(
-                synthetic_fact(
-                    value=f["conductor"],
-                    provider=PROVIDER_FERC1,
-                    as_reported=f["conductor"],
-                    lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:conductor",
-                )
-            )
-            thermal_obs[line_id] = store.add(
-                synthetic_fact(
-                    value=float(f["thermal_limit_mw"]),
-                    provider=PROVIDER_FERC1,
-                    unit="MW",
-                    as_reported=f["thermal_limit_mw"],
-                    lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:thermal",
-                )
-            )
-            cost_obs[line_id] = store.add(
-                synthetic_fact(
-                    value=float(f["cost_usd"]),
-                    provider=PROVIDER_FERC1,
-                    unit="USD",
-                    as_reported=f["cost_usd"],
-                    lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:cost",
-                )
-            )
-        voltage_obs[line_id] = obs
-
-    return IngestBundle(
-        region=region,
-        buses=buses,
-        line_skeleton=line_skeleton,
-        voltage_obs=voltage_obs,
-        conductor_obs=conductor_obs,
-        thermal_obs=thermal_obs,
-        cost_obs=cost_obs,
-        constraints=tables["constraints"],
-        congestion=tables["congestion"],
-        planning=tables["planning"],
-        queue=tables["queue"],
-        load_930=tables["load_930"],
-        input_identity=identity,
+    coverage = {t: {"coverage": "observed", "note": "synthetic fixture"} for t in REQUIRED_TABLES}
+    return _envelope(
+        region, store, tables, identity,
+        stamps={t: None for t in REQUIRED_TABLES}, contributors={}, coverage=coverage,
     )
 
 
@@ -249,10 +164,69 @@ def _load_live(
     _require_expected_inputs(identity, expected_inputs)
     tables = {table: _parse_csv(content) for table, (_, content) in raw_tables.items()}
     stamps = {t: snap.stamp(t) for t in REQUIRED_TABLES}
-    s_h = stamps["hifld_lines"]
-    s_e = stamps["eia_lines"]
-    s_f = stamps["ferc1_lines"]
-    s_b = stamps["buses"]
+    contributors = {t: snap.contributors(t) for t in REQUIRED_TABLES}
+    coverage = {t: snap.coverage(t) for t in REQUIRED_TABLES}
+    bundle = _envelope(
+        region, store, tables, identity,
+        stamps=stamps, contributors=contributors, coverage=coverage,
+    )
+    bundle.table_stamps = stamps
+    return bundle
+
+
+def _leaf(stamp: SourceStamp | None, *, value, provider: str, lineage_id: str,
+          unit: str | None = None, as_reported: str | None = None) -> Fact:
+    """A raw observation: real-stamped on a live run, synthetic on fixtures."""
+    if stamp is None:
+        return synthetic_fact(
+            value=value, provider=provider, unit=unit, as_reported=as_reported,
+            lineage_id=lineage_id,
+        )
+    return real_fact(
+        value=value, stamp=stamp, provider=provider, unit=unit,
+        as_reported=as_reported, lineage_id=lineage_id,
+    )
+
+
+def _text(row: dict, key: str) -> str:
+    return (row.get(key) or "").strip()
+
+
+def _unique(rows: list[dict], key, table: str) -> None:
+    seen = set()
+    for r in rows:
+        k = key(r)
+        if k in seen:
+            raise ValueError(f"Table {table!r} has duplicate key {k!r}")
+        seen.add(k)
+
+
+def _envelope(
+    region: RegionConfig,
+    store: LineageStore,
+    tables: dict[str, list[dict]],
+    identity: dict,
+    *,
+    stamps: dict[str, SourceStamp | None],
+    contributors: dict[str, list[SourceStamp]],
+    coverage: dict[str, dict],
+) -> IngestBundle:
+    # One Fact per table: its sha256, under the table's stamp (and one per
+    # contributing source), so absence-derived values have lineage too.
+    table_lineage: dict[str, list[str]] = {}
+    for t in REQUIRED_TABLES:
+        digest = identity["tables"][t]["sha256"]
+        n = f"{len(tables[t])} rows"
+        ids = [store.add(_leaf(
+            stamps[t], value=digest, provider=TABLE_PROVIDER[t],
+            lineage_id=f"table:{t}", as_reported=n,
+        )).lineage_id]
+        for c in contributors.get(t, []):
+            ids.append(store.add(_leaf(
+                c, value=digest, provider=c.source,
+                lineage_id=f"table:{t}:{c.source}", as_reported=n,
+            )).lineage_id)
+        table_lineage[t] = ids
 
     buses = [
         Bus(
@@ -266,11 +240,11 @@ def _load_live(
         )
         for r in tables["buses"]
     ]
-    _ = s_b  # buses are structural (geometry exemption); stamp kept for the record
 
+    s_h, s_e, s_f = stamps["hifld_lines"], stamps["eia_lines"], stamps["ferc1_lines"]
     hifld = {r["line_id"]: r for r in tables["hifld_lines"]}
-    eia = {r["line_id"]: r for r in tables["eia_lines"]}
-    ferc1 = {r["line_id"]: r for r in tables["ferc1_lines"]}
+    eia = {r["line_id"]: r for r in tables["eia_lines"] if _text(r, "line_id")}
+    ferc1 = {r["line_id"]: r for r in tables["ferc1_lines"] if _text(r, "line_id")}
 
     line_skeleton: dict[str, dict] = {}
     voltage_obs: dict[str, list[Fact]] = {}
@@ -284,76 +258,92 @@ def _load_live(
             "to_bus": h["to_bus"],
             "length_mi": float(h["length_mi"]),
         }
-        obs: list[Fact] = []
-        obs.append(
-            store.add(
-                real_fact(
-                    value=float(h["voltage_kv"]),
-                    stamp=s_h,
-                    provider=PROVIDER_HIFLD,
-                    unit="kV",
-                    as_reported=h["voltage_kv"],
-                    lineage_id=f"obs:{PROVIDER_HIFLD}:{line_id}:voltage",
-                )
-            )
-        )
-        if line_id in eia:
-            obs.append(
-                store.add(
-                    real_fact(
-                        value=float(eia[line_id]["voltage_kv"]),
-                        stamp=s_e,
-                        provider=PROVIDER_EIA,
-                        unit="kV",
-                        as_reported=eia[line_id]["voltage_kv"],
-                        lineage_id=f"obs:{PROVIDER_EIA}:{line_id}:voltage",
-                    )
-                )
-            )
+        # voltage observed independently by up to three providers
+        obs: list[Fact] = [store.add(_leaf(
+            s_h, value=float(h["voltage_kv"]), provider=PROVIDER_HIFLD, unit="kV",
+            as_reported=h["voltage_kv"], lineage_id=f"obs:{PROVIDER_HIFLD}:{line_id}:voltage",
+        ))]
+        if line_id in eia and _text(eia[line_id], "voltage_kv"):
+            obs.append(store.add(_leaf(
+                s_e, value=float(eia[line_id]["voltage_kv"]), provider=PROVIDER_EIA,
+                unit="kV", as_reported=eia[line_id]["voltage_kv"],
+                lineage_id=f"obs:{PROVIDER_EIA}:{line_id}:voltage",
+            )))
         if line_id in ferc1:
             f = ferc1[line_id]
-            obs.append(
-                store.add(
-                    real_fact(
-                        value=float(f["voltage_kv"]),
-                        stamp=s_f,
-                        provider=PROVIDER_FERC1,
-                        unit="kV",
-                        as_reported=f["voltage_kv"],
-                        lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:voltage",
-                    )
-                )
-            )
-            conductor_obs[line_id] = store.add(
-                real_fact(
-                    value=f["conductor"],
-                    stamp=s_f,
-                    provider=PROVIDER_FERC1,
+            if _text(f, "voltage_kv"):
+                obs.append(store.add(_leaf(
+                    s_f, value=float(f["voltage_kv"]), provider=PROVIDER_FERC1,
+                    unit="kV", as_reported=f["voltage_kv"],
+                    lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:voltage",
+                )))
+            # FERC Form 1 reports no thermal rating; a live table leaves it blank.
+            if _text(f, "conductor"):
+                conductor_obs[line_id] = store.add(_leaf(
+                    s_f, value=f["conductor"], provider=PROVIDER_FERC1,
                     as_reported=f["conductor"],
                     lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:conductor",
-                )
-            )
-            thermal_obs[line_id] = store.add(
-                real_fact(
-                    value=float(f["thermal_limit_mw"]),
-                    stamp=s_f,
-                    provider=PROVIDER_FERC1,
-                    unit="MW",
-                    as_reported=f["thermal_limit_mw"],
+                ))
+            if _text(f, "thermal_limit_mw"):
+                thermal_obs[line_id] = store.add(_leaf(
+                    s_f, value=float(f["thermal_limit_mw"]), provider=PROVIDER_FERC1,
+                    unit="MW", as_reported=f["thermal_limit_mw"],
                     lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:thermal",
-                )
-            )
-            cost_obs[line_id] = store.add(
-                real_fact(
-                    value=float(f["cost_usd"]),
-                    stamp=s_f,
-                    provider=PROVIDER_FERC1,
-                    unit="USD",
-                    as_reported=f["cost_usd"],
+                ))
+            if _text(f, "cost_usd"):
+                cost_obs[line_id] = store.add(_leaf(
+                    s_f, value=float(f["cost_usd"]), provider=PROVIDER_FERC1,
+                    unit="USD", as_reported=f["cost_usd"],
                     lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:cost",
-                )
-            )
+                ))
         voltage_obs[line_id] = obs
+
+    # Operational rows: one Fact per scored field, ids attached to the row.
+    constraints = tables["constraints"]
+    _unique(constraints, lambda r: r["constraint_id"], "constraints")
+    for r in constraints:
+        cid = r["constraint_id"]
+        r["_lineage"] = [store.add(_leaf(
+            stamps["constraints"], value=r["ctype"], provider=TABLE_PROVIDER["constraints"],
+            as_reported=" | ".join(
+                _text(r, k) for k in ("monitored_facility", "monitored_line",
+                                      "contingency_facility", "contingency_line")
+                if _text(r, k)
+            ) or None,
+            lineage_id=f"obs:constraints:{cid}",
+        )).lineage_id]
+
+    congestion = tables["congestion"]
+    _unique(congestion, lambda r: r["constraint_id"], "congestion")
+    for r in congestion:
+        r["_lineage"] = _row_facts(
+            store, stamps["congestion"], TABLE_PROVIDER["congestion"], r,
+            f"obs:congestion:{r['constraint_id']}",
+            ("monthly_cost_musd", "hours_binding", "shadow_price_sum_usd_per_mw"),
+        )
+
+    planning = tables["planning"]
+    for i, r in enumerate(planning):
+        r["_lineage"] = _row_facts(
+            store, stamps["planning"], TABLE_PROVIDER["planning"], r,
+            f"obs:planning:{r['constraint_id']}:{i}", ("assigned_cost_musd",),
+        )
+
+    queue = tables["queue"]
+    _unique(queue, lambda r: r["request_id"], "queue")
+    for r in queue:
+        r["_lineage"] = _row_facts(
+            store, stamps["queue"], TABLE_PROVIDER["queue"], r,
+            f"obs:queue:{r['request_id']}", ("mw",),
+        )
+
+    load_930 = tables["load_930"]
+    _unique(load_930, lambda r: (r["snapshot"], r["ba"]), "load_930")
+    for r in load_930:
+        r["_lineage"] = _row_facts(
+            store, stamps["load_930"], TABLE_PROVIDER["load_930"], r,
+            f"obs:load_930:{r['snapshot']}:{r['ba']}", ("load_mw",),
+        )
 
     return IngestBundle(
         region=region,
@@ -363,11 +353,32 @@ def _load_live(
         conductor_obs=conductor_obs,
         thermal_obs=thermal_obs,
         cost_obs=cost_obs,
-        constraints=tables["constraints"],
-        congestion=tables["congestion"],
-        planning=tables["planning"],
-        queue=tables["queue"],
-        load_930=tables["load_930"],
-        table_stamps=stamps,
+        constraints=constraints,
+        congestion=congestion,
+        planning=planning,
+        queue=queue,
+        load_930=load_930,
         input_identity=identity,
+        table_lineage=table_lineage,
+        table_coverage=coverage,
     )
+
+
+def _row_facts(store: LineageStore, stamp: SourceStamp | None, provider: str,
+               row: dict, prefix: str, fields: tuple[str, ...]) -> list[str]:
+    ids = []
+    for name in fields:
+        raw = _text(row, name)
+        if not raw:
+            continue
+        ids.append(store.add(_leaf(
+            stamp, value=float(raw), provider=provider, as_reported=raw,
+            lineage_id=f"{prefix}:{name}",
+        )).lineage_id)
+    return ids
+
+
+def retrieved_at_of(facts: list[Fact]) -> datetime:
+    """Latest retrieval time among observations (a derived value is as fresh as its
+    freshest input)."""
+    return max((f.retrieved_at for f in facts), default=SYNTHETIC_RETRIEVED_AT)

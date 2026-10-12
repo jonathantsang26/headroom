@@ -4,8 +4,10 @@ honestly into rank stability."""
 
 from __future__ import annotations
 
+from headroom.provenance.derived import derived_range
 from headroom.provenance.envelope import Dist, Range
-from headroom.provenance.synthetic import synthetic_range
+
+STAGE = "reconstruct"
 
 
 def band(
@@ -16,15 +18,19 @@ def band(
     basis: str,
     provider: str,
     lineage_id: str,
+    inputs: list[str],
     dist: Dist = "triangular",
 ) -> Range:
-    """A symmetric-ish uncertainty band around a point estimate."""
-    return synthetic_range(
+    """A symmetric-ish uncertainty band around a point estimate, derived from the
+    observations named in `inputs`."""
+    return derived_range(
         lo=expected * lo_frac,
         expected=expected,
         hi=expected * hi_frac,
         basis=basis,
+        stage=STAGE,
         provider=provider,
         lineage_id=lineage_id,
+        inputs=inputs,
         dist=dist,
     )
