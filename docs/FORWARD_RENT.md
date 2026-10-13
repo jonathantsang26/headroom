@@ -10,7 +10,8 @@ of later congestion. This page gives the evidence and the model that replaces it
 SPP's congestion-by-constraint files give dollars per flowgate per month. Within
 2025, each split trains on six months and scores on the other six. The top 5% by the
 predictor are compared with the best possible top 5% of the held-out months, by the
-dollars they capture. Snapshot `2026-10-13.r2`, 2,072 flowgates with dollars:
+dollars they capture. The data is snapshot `2026-10-13.r2`: 2,072 constraint–contingency
+keys with dollars, 2,053 of them scored flowgates.
 
 | Split | k | Annual dollars: capture / overlap / leaders at $0 | Annual × months-binding share: capture / overlap / leaders at $0 |
 |---|---|---|---|
@@ -50,8 +51,9 @@ p99 (8.4). ε is drawn independently per flowgate and draw.
 Three consequences:
 
 - A flowgate that bound in one month keeps 1/12 of its 2025 dollars.
-- The p5 of most flowgates' EV is 0.
-- The mean EV, which ranks, prices in that much of a year's congestion does not recur.
+- Most flowgates' EV band starts at or below 0.
+- The expected value, which ranks, prices in that much of a year's congestion does not
+  recur. The decision uses E[ε] (1.22). The draws of ε spread the realized value.
 
 The calibration is recorded in `config/regions/spp.scoring.yaml` under `forward_rent`:
 the predictor, the quantiles, the snapshot, the sha256 of the twelve raw files, and
@@ -73,10 +75,10 @@ and its -40%/+50% band.
 - **Calibrated on the same year it is applied to.** ε is fitted on 2025 months and
   applied to 2025 rent, so it is in-sample for that year.
 - **One distribution for all leaders.** ε does not depend on element type, contingency
-  or naming (SPP's temporary `TMP`/`TP` flowgates hold about half of the dollars).
+  or naming (SPP's temporary `TMP`/`TP` flowgates hold about 60% of the dollars).
 - **Two ways to count months.** The backtest counts months with congestion dollars.
   The model's share uses `months_binding` (months with any binding hour), because the
-  normalized table carries that. The two differ by one month for 41 of 2,053
-  flowgates.
+  normalized table carries that. The two differ for 41 of 2,053 flowgates: by one month
+  for 38, and by two for 3.
 - **System level unmodeled.** It assumes next year's congestion level matches 2025's.
   SPP's own day-ahead totals were $1,734M (2023), $2,163M (2024) and $1,977M (2025).

@@ -136,11 +136,12 @@ and its sha256. Replay checks that sha before modeling. A run whose priors file 
 since changed still replays from the recorded content.
 
 The runtime identity hashes every module under `ingest`, `quality`, `reconstruct`,
-`model`, `provenance`, `schema` and `sources`, plus `pipeline.py`. It does not hash
-`export.py` or the CLI, so changes there do not invalidate replay. Any change to the
-hashed modules does. For example, the 2026-10-12 SPP run replays only at commits
-`99c95f5` through `3b2a397`: `e24272d` changed the SPP adapter. Keep the commit a
-shared run came from.
+`model`, `provenance`, `schema` and `sources`, plus `pipeline.py` and `export.py`.
+`export.py` is included because it makes the shareable or internal decision. The CLI,
+map and MCP server are not hashed, so changes there do not invalidate replay. Any
+change to the hashed modules does. For example, the 2026-10-12 SPP run replays only at
+commits `99c95f5` through `3b2a397`: `e24272d` changed the SPP adapter, and `export.py`
+was not hashed then. Keep the commit a shared run came from.
 
 Legacy manifests lack the evidence needed for historical replay and are rejected.
 They must be replaced by a new run from trusted inputs; adding hashes to an old

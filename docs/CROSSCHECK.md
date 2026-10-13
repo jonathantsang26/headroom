@@ -55,24 +55,26 @@ are SPP (7 OG&E, 1 SPS). All 8 rows are present in the pinned 2023 data.
 
 Headroom's SPP shortlist (run on snapshot `2026-10-13.r2`) ranks the 2,072
 flowgates that bound in SPP's 2025 day-ahead market: 1,682 lines, 379 transformers and
-11 interfaces. They roll up to 892 corridors. The order is by the mean expected net
-value of each flowgate's best GET, which combines SPP's posted congestion dollars,
-forward-rent persistence and cited GET priors. SPP names these elements by
+11 interfaces. They roll up to 892 corridors. The order is by the expected net value
+of a GET decision, which combines SPP's posted congestion dollars, forward-rent
+persistence and cited GET priors. 53 flowgates have a GET worth deploying. SPP names these elements by
 market-model bus names, and their locations are CEII, so no public join exists between
 the two lists. A name search of all 892 corridor keys found:
 
 - 7 of the 8 echo-gridlock SPP lines have no recognizable SPP 2025 binding constraint:
   Woodward–Beaver County, Woodward–Thistle, Horseshoe Lake–Seminole, Mathewson–Cimarron,
   Hitchland–Beaver Co, Seminole–Muskogee, Muskogee–Pittsburgh.
-- Draper Lake–Seminole plausibly matches `LN DRAPR1 - SEMINOLE`, corridor rank 188 of
-  892 with a mean EV of about $100/yr. This is a name guess, not a verified join.
-- `LN PITTSB9 - SEMINOLE` (rank 703, EV 0) is a different line, Pittsburg–Seminole.
+- Draper Lake–Seminole plausibly matches `LN DRAPR1 - SEMINOLE`: corridor rank 187 of
+  892, with no GET worth deploying. This is a name guess, not a verified join.
+- `LN PITTSB9 - SEMINOLE` (rank 352, no GET worth deploying) is a different line,
+  Pittsburg–Seminole.
 
 None of echo-gridlock's SPP corridors reaches Headroom's shortlist (k = 103 flowgates,
 the top 5%). The lists disagree because they measure different things. echo-gridlock
 measures how big a 345 kV+ asset is. Headroom measures where SPP's market was observed
-to bind in 2025 and what relieving it would be worth. Its top ten corridors carried
-$22–97M of 2025 day-ahead congestion each, and five of them bound in every month. All
+to bind in 2025 and what relieving it would be worth. The leading flowgates of its top
+ten corridors carried $22–97M of 2025 day-ahead congestion each ($24–152M summed over
+each corridor's flowgates), and five of them bound in every month. All
 ten bind under N-1 contingencies. Going by their bus names (a guess, since locations
 are CEII), they sit in Oklahoma, Kansas, Nebraska and New Mexico. The monitored
 elements' voltages are not public.

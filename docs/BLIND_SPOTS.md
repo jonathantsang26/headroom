@@ -53,7 +53,10 @@ and a widened band — flagged, never dropped.
   `config/get_priors.yaml`. These are cited judgement, not observations, and the order
   of the shortlist depends on them. Their content and sha256 are recorded in every run
   manifest. The value of relief is first order (u × rent): it ignores the network
-  response beyond the haircut and assumes one deployment relieves one flowgate.
+  response beyond the haircut and assumes one deployment relieves one flowgate. Only 53
+  flowgates have a GET worth deploying under these priors. That count ranges from 16 to
+  114 across the priors' ranges (`scripts/ev_sensitivity.py`), though the leaders
+  hardly move.
 - **One year of congestion is a weak forecast.** Within 2025, only about 30% of one
   half-year's top 5% recur in the other half. The EV layer therefore uses forward rent,
   2025 dollars × months-binding share × a backtest ratio draw (docs/FORWARD_RENT.md).

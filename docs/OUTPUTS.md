@@ -26,8 +26,8 @@ depends on the producer:
 | Value | lo / expected / hi |
 |---|---|
 | `composite_*` | p5 / p50 / p95 of the Monte Carlo composite draws |
-| `ev_lo/expected/hi_musd` | p5 / p50 / p95 of the best-GET net value over draws. With a large chance that no GET applies, p50 can be 0 while the mean is positive. |
-| `ev_mean_musd` | The mean of the same draws: the expected net value. It ranks under `ranking: ev`. |
+| `ev_lo/expected/hi_musd` | p5 / p50 / p95 of the realized net value of the GET decision over draws. It is negative when the deployed GET loses money, and 0 when nothing is deployed. |
+| `ev_mean_musd` | The expected net value of the decision. Each draw learns which GETs apply, then deploys the applicable GET with the highest expected net value, or nothing. The value is not floored per draw, so no hindsight is used. It ranks under `ranking: ev`, and it is 0 when no GET is worth deploying. |
 | `rent_musd` (signal Range) | The observed value is `expected`. lo and hi are a -40% / +50% forward band. |
 | `hours_binding` (signal Range) | Observed hours ±20% |
 
@@ -37,27 +37,28 @@ depends on the producer:
   (the corridor key: a line with endpoint order ignored, an interface by constraint
   name, or a substation's transformers).
 - `p_top_k`: the share of Monte Carlo draws in which the flowgate is in the top k.
-  - Under `ranking: ev` it is EV's own measure, and a draw counts only if the best
+  - Under `ranking: ev` it is EV's own measure, and a draw counts only if the realized
     net value is above 0.
   - For EV leaders it converges to P(some GET applies to the element), so it shows
     stability and does not order the list.
 - `composite_lo/expected/hi`: the weighted signal composite. Under `ranking: ev` it is
   a diagnostic, and `p_top_k_composite` gives its rank stability.
 - `recommended_get`:
-  - Under `ranking: ev`, the GET with the highest expected net value if pursued:
-    the mean over draws of max(0, its net value), counted as 0 where it does not apply.
-    `No cost-effective GET` means no GET has a positive expected value. The
-    `p_best_*` columns give how often each option is the best in a draw.
+  - Under `ranking: ev`, the GET that contributes most to the decision's expected value.
+    `No cost-effective GET` means no applicable GET ever has a positive expected net
+    value. `get_basis` gives each GET's expected net value where it applies. The
+    `p_best_*` columns give how often each option is the one deployed. Flowgates
+    without observed congestion dollars keep the evidence rule's choice.
   - Otherwise, the evidence rule's choice.
   - `get_rule` always holds the evidence rule's choice.
   - `get_basis` says what each rule saw.
   - `get_evidence` is the evidence class the priors used.
   - `get_candidates` lists the GETs that class does not rule out.
 - `p_best_none`, `p_best_dlr`, `p_best_apfc`, `p_best_to`, `p_best_c`: the share of
-  draws in which each option is best (they sum to 1).
-- `ev_mean_musd`, `ev_lo_musd`, `ev_expected_musd`, `ev_hi_musd`: best-GET net value in
-  $M/yr (see the table above). Blank when the flowgate has no observed congestion
-  dollars.
+  draws in which each option is the one deployed (they sum to 1).
+- `ev_mean_musd`, `ev_lo_musd`, `ev_expected_musd`, `ev_hi_musd`: the GET decision's net
+  value in $M/yr (see the table above). Blank when the flowgate has no observed
+  congestion dollars. Rows tied at 0 are ordered by the composite.
 - Observed quantities in their own units:
   - `rent_musd`: SPP's posted day-ahead congestion dollars, $M/yr.
   - `value_of_1mw_relief_usd`: Σ|shadow price|, $/MW-yr.

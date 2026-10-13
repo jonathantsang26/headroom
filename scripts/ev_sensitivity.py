@@ -7,8 +7,9 @@ region's scoring file. The perturbations:
 - each applicability probability moved by +/-0.25, clipped to [0, 1];
 - forward rent turned off (plain observed rent with its band).
 
-Each one is compared with the baseline by the share of the top-k flowgates kept and the
-number of flowgates whose mean EV exceeds $1k/yr.
+Each one is compared with the baseline by the top 10 and top 20 kept, the share of the
+top k kept, and the number of flowgates with a GET worth deploying (positive expected
+value).
 
     python scripts/ev_sensitivity.py --region spp            # 10,000 draws, ~1 min
     python scripts/ev_sensitivity.py --region spp --draws 2000
@@ -80,22 +81,25 @@ def main(argv: list[str] | None = None) -> int:
 
     base, r0 = ranked(cfg.get_priors, cfg.forward_rent)
     k = r0.k
-    above = lambda r: sum(v > 0.001 for v in r.ev_mean.values())
+    positive = lambda r: sum(v > 0 for v in r.ev_mean.values())
+    top = lambda order, n: len(set(order[:n]) & set(base[:n]))
     print(f"baseline: {len(base)} flowgates with EV, k = {k}, {draws} draws, priors "
-          f"{r0.priors_version}; mean EV > $1k/yr: {above(r0)}; sum of mean EV "
-          f"${sum(r0.ev_mean.values()):.2f}M/yr")
+          f"{r0.priors_version}; with a GET worth deploying: {positive(r0)}; sum of mean "
+          f"EV ${sum(r0.ev_mean.values()):.2f}M/yr")
     results = []
     for name, priors, use_forward in perturbations(cfg.get_priors):
         order, r = ranked(priors, cfg.forward_rent if use_forward else None)
-        kept = len(set(order[:k]) & set(base[:k])) / k
-        results.append((kept, name, above(r)))
-        print(f"{name:58s} top-k kept {kept:5.1%}  mean EV > $1k: {above(r)}")
-    print("\nlargest shortlist changes:")
-    for kept, name, n in sorted(results)[:8]:
-        print(f"  {kept:5.1%} kept  {name}  (mean EV > $1k: {n})")
-    print("\nlargest changes in flowgates with mean EV > $1k/yr:")
-    for kept, name, n in sorted(results, key=lambda x: abs(x[2] - above(r0)), reverse=True)[:6]:
-        print(f"  {n:4d} (baseline {above(r0)})  {name}")
+        row = (top(order, 10), top(order, 20), top(order, k) / k, positive(r), name)
+        results.append(row)
+        print(f"{name:58s} top10 {row[0]:2d}/10  top20 {row[1]:2d}/20  top-k {row[2]:5.1%}  "
+              f"worth deploying {row[3]}")
+    print("\nleast stable leaders (top 10 kept, top 20 kept):")
+    for t10, t20, kk, n, name in sorted(results)[:6]:
+        print(f"  {t10}/10, {t20}/20  {name}")
+    print(f"\nlargest changes in flowgates with a GET worth deploying (baseline {positive(r0)}):")
+    for t10, t20, kk, n, name in sorted(results, key=lambda x: abs(x[3] - positive(r0)),
+                                        reverse=True)[:6]:
+        print(f"  {n:4d}  {name}")
     return 0
 
 
