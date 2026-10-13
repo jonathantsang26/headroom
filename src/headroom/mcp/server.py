@@ -47,13 +47,13 @@ def build_server(scores_parquet: str | Path = "data/processed/scores.parquet"):
     mcp = FastMCP("headroom")  # pragma: no cover
 
     @mcp.tool()  # pragma: no cover
-    def top_corridors(limit: int = 10) -> list[dict]:
-        """Return the top-ranked corridors by rank stability."""
+    def top_flowgates(limit: int = 10) -> list[dict]:
+        """Return the top flowgates in the run's own rank order (the export's `rank`,
+        which follows the run's ranking: composite or EV)."""
         with duckdb.connect() as con:
             return con.execute(
-                "SELECT physical_corridor, p_top_k, recommended_get "
-                "FROM read_parquet(?) ORDER BY p_top_k DESC, composite_expected DESC "
-                "LIMIT ?",
+                "SELECT rank, constraint_id, physical_corridor, p_top_k, recommended_get "
+                "FROM read_parquet(?) ORDER BY rank LIMIT ?",
                 [str(scores_parquet), limit],
             ).fetchall()
 

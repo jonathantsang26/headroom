@@ -13,9 +13,10 @@ suffix. A run the publishable gate refused gets `.INTERNAL.synthetic` in every n
 | `NOTICE.md` | run | Mode, input snapshot, every source used with its terms, sources consulted that gave nothing, and caveats. |
 | `run_manifest.json` | run | Inputs (paths and sha256), code and runtime identity, source pins, scoring (with GET priors and their sha256), the export decision, attribution, and the sha256 of every file above. `headroom reproduce` replays from it. |
 
-"Shortlist" names the ranked deliverable. The CSV is not cut at k. The top-k
-membership a reader should use is `p_top_k`, or the first `shortlist_k` rows, where
-`shortlist_k` is in the manifest.
+"Shortlist" names the ranked deliverable. The CSV is not cut at k: the shortlist is
+the first `shortlist_k` rows in `rank` order (`shortlist_k` is in the manifest).
+`p_top_k` says how stable a row's place is. Under `ranking: ev` it mostly reflects the
+chance that some GET applies to the element, so do not re-sort by it.
 
 ## What a band means
 
