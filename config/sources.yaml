@@ -73,7 +73,7 @@ sources:
     source_version: "spp_portal_2025-06"
     compliance:
       publishable: true
-      basis: "SPP posts Integrated Marketplace data publicly on the SPP Portal."
+      basis: "SPP posts Integrated Marketplace data publicly on the SPP Portal. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_binding_constraints
@@ -85,7 +85,7 @@ sources:
     source_version: "spp_da_bc_monthly_2025"
     compliance:
       publishable: true
-      basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal."
+      basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_congestion_by_constraint
@@ -97,7 +97,7 @@ sources:
     source_version: "spp_cbc_2025"
     compliance:
       publishable: true
-      basis: "Monthly cost of congestion by binding constraint, posted publicly on the SPP Portal."
+      basis: "Monthly cost of congestion by binding constraint, posted publicly on the SPP Portal. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "Observed rent for the rent signal and the EV model. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_tcr_funding
@@ -109,7 +109,7 @@ sources:
     source_version: "spp_tcr_funding_2025"
     compliance:
       publishable: true
-      basis: "Monthly TCR funding by constraint, posted publicly on the SPP Portal."
+      basis: "Monthly TCR funding by constraint, posted publicly on the SPP Portal. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "Calibration total only (settled DA congestion); no per-flowgate values used. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_fca
@@ -121,7 +121,7 @@ sources:
     source_version: "fca_2024_2025-09"
     compliance:
       publishable: true
-      basis: "Published SPP engineering study."
+      basis: "Published SPP engineering study. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "§6.3 planning-exhaust ground truth. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_itp
@@ -133,7 +133,7 @@ sources:
     source_version: "itp_2024_v1.0"
     compliance:
       publishable: true
-      basis: "Published SPP Integrated Transmission Planning assessment."
+      basis: "Published SPP Integrated Transmission Planning assessment. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "§6.3 planning items -> planning_items table. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_queue
@@ -145,7 +145,7 @@ sources:
     source_version: "spp_giq_2026-10-12"   # the CSV's "Last Updated On" date
     compliance:
       publishable: true
-      basis: "SPP publishes the interconnection queue."
+      basis: "SPP publishes the interconnection queue. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
       notes: "demand_pressure signal. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   # ---- Meta: fabricated test/demo data (NEVER publishable) ----

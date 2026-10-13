@@ -180,7 +180,7 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
     carry that month; duplicate keys are removed (counted, conflicts counted)."""
     per: dict[str, dict] = defaultdict(lambda: {"months": {}, "positive": 0, "mon": set()})
     seen: dict[tuple, str] = {}
-    dupes = conflicts = 0
+    dupes = 0
     entries = {}
     for month in MONTHS:
         e = common.raw_entry(snapshot_dir, _money_raw_name("cbc", year, month))
@@ -191,8 +191,11 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
                     f"SPP congestion-by-constraint {year}-{month:02d} has a row for {r['Date']}")
             key = (r["Date"], r["Constraint Name"], r["Contingency Name"])
             if key in seen:
+                if seen[key] != r["Sum"]:
+                    raise ValueError(
+                        f"SPP congestion-by-constraint {r['Date']} has conflicting rows for "
+                        f"{key[1]}|{key[2]}: Sum {seen[key]} vs {r['Sum']}")
                 dupes += 1
-                conflicts += seen[key] != r["Sum"]
                 continue
             seen[key] = r["Sum"]
             cid = f"{r['Constraint Name']}|{r['Contingency Name']}"
@@ -215,7 +218,7 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
     cbc_version, tcr_version = _money_pins(year)
     latest = lambda es: max(x["retrieved_at"] for x in es.values())
     return {
-        "per": per, "dupes": dupes, "conflicts": conflicts, "tcr_total": tcr_total,
+        "per": per, "dupes": dupes, "tcr_total": tcr_total,
         "cbc_stamp": {"source": "spp_congestion_by_constraint", "source_version": cbc_version,
                       "retrieved_at": latest(entries)},
         "tcr_stamp": {"source": "spp_tcr_funding", "source_version": tcr_version,
@@ -422,9 +425,10 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             "(no-contingency) flowgates."
         ),
     )
+    unjoined = sum(1 for r in congestion if not r["rent_musd"])
     common.write_table(
         snapshot_dir, "congestion", congestion, CONGESTION_FIELDS, **stamp,
-        coverage="observed",
+        coverage="partial" if unjoined else "observed",
         contributors=[money["cbc_stamp"], money["tcr_stamp"]],
         column_sources={"rent_musd": money["cbc_stamp"],
                         "max_month_cost_musd": money["cbc_stamp"]},
@@ -445,8 +449,9 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             f"{len(congestion)} flowgates ({joined_abs / kept_abs if kept_abs else 0:.3%} "
             f"of kept |shadow price|); {mismatched} not joined because the monitored "
             f"element differs (recycled ids); {flagged} flagged with negative-rent months; "
-            f"the rest have no row and their rent is unobserved (blank). Duplicate "
-            f"congestion keys removed: {money['dupes']} ({money['conflicts']} conflicting). "
+            f"{unjoined} have no observed $ and their rent is unobserved (blank). Identical "
+            f"duplicate congestion keys removed: {money['dupes']} (a conflicting duplicate "
+            "fails the build). "
             f"Calibration: congestion-by-constraint total on kept flowgates "
             f"${cbc_total / 1e6:,.1f}M; SPP TCR funding by constraint, DA Collected over "
             f"all constraints, ${money['tcr_total'] / 1e6:,.1f}M (settled; the two "

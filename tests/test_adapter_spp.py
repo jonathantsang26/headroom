@@ -249,7 +249,9 @@ def test_congestion_matches_sums_computed_from_the_raw_rows(snap):
     assert int(rows["KINGFISH|BASE"]["hours_binding"]) == len({r["GMTIntervalEnd"] for r in kingfish})
 
     entry = _manifest(snap)["tables"]["congestion"]
-    assert entry["coverage"] == "observed"
+    unjoined = [cid for cid, r in rows.items() if not r["rent_musd"]]
+    # partial exactly when some flowgate has no observed congestion $
+    assert entry["coverage"] == ("partial" if unjoined else "observed")
     assert "Day-Ahead market only" in entry["note"] and "$/MW" in entry["note"]
 
 
@@ -396,7 +398,7 @@ def test_rent_is_spp_congestion_dollars_joined_exactly_with_its_own_stamp(snap):
     assert entry["column_sources"]["max_month_cost_musd"] == cbc
     assert {c["source"] for c in entry["contributors"]} == {
         "spp_congestion_by_constraint", "spp_tcr_funding"}
-    assert "Duplicate congestion keys removed: 1" in entry["note"]
+    assert "duplicate congestion keys removed: 1" in entry["note"]
     assert "TCR funding by constraint, DA Collected" in entry["note"]
     Snapshot(snap).require_tables(TABLES)
 
@@ -434,4 +436,14 @@ def test_a_congestion_file_for_another_month_is_refused(tmp_path, served):
     bad = CBC_BYTES[2].decode("utf-8").replace("\n202502,", "\n202503,", 1).encode("utf-8")
     snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 2: bad})
     with pytest.raises(ValueError, match="congestion-by-constraint 2025-02"):
+        spp.normalize(snap)
+
+
+def test_a_conflicting_congestion_duplicate_fails_the_build(tmp_path, served):
+    text = CBC_BYTES[1].decode("utf-8")
+    line = next(ln for ln in text.split("\n")[1:] if ",70BS12WAGS34," in ln)
+    head, _, value = line.rpartition(",")
+    bad = (text.rstrip("\n") + "\n" + f"{head},{float(value) - 1:.2f}" + "\n").encode("utf-8")
+    snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 1: bad})
+    with pytest.raises(ValueError, match="conflicting rows"):
         spp.normalize(snap)

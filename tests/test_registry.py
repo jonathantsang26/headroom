@@ -41,3 +41,14 @@ def test_unknown_source_lookup():
     reg = load_registry()
     assert reg.get("does_not_exist") is None
     assert "does_not_exist" not in reg
+
+
+def test_every_spp_source_carries_spp_terms_in_its_basis():
+    from headroom.sources import load_registry
+
+    spp = [s for s in load_registry().all() if s.name.startswith("spp_")]
+    assert len(spp) == 7
+    for s in spp:
+        assert "terms-conditions" in s.compliance.basis, s.name
+        assert "commercial use requires" in s.compliance.basis, s.name
+        assert s.publishable is True
