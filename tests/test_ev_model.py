@@ -63,7 +63,8 @@ def test_ev_ranks_the_real_subset_and_stays_shareable(region, tmp_path):
         assert 0.0 <= s.p_top_k <= 1.0
         if s.ev is None:
             continue
-        assert 0.0 <= s.ev.lo <= s.ev.expected <= s.ev.hi
+        assert s.ev.lo <= s.ev.expected <= s.ev.hi  # realized value: can be negative
+        assert s.ev_mean >= 0.0  # deploying nothing is always possible
         assert sum(s.get_probabilities.values()) == pytest.approx(1.0)
         assert s.recommended_get in {*s.get_candidates, NO_GET}
         if s.get_evidence.startswith("transformer") or s.get_evidence == "interface":
@@ -287,3 +288,38 @@ def test_the_recommendation_is_the_get_worth_pursuing_not_the_most_frequent_best
     assert res.p_best[top][NO_GET] > 0.5  # no GET applies in ~70% of draws
     assert res.recommended[top] == "Dynamic Line Rating"
     assert res.option_value[top]["Dynamic Line Rating"] == pytest.approx(res.ev_mean[top])
+
+
+def test_a_get_with_negative_expected_value_is_never_deployed_on_hindsight(region):
+    """Some draws would pay (wide relief share), but the expected net value where the
+    GET applies is negative: a planner cannot pick the good draws in advance, so the
+    decision is to deploy nothing and its value is 0."""
+    result = run_pipeline(region, scoring=_scoring())
+    co = result.bucket_b.congestion
+    p = _only("Dynamic Line Rating", 1.0)
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = {"lo": 0.0, "mode": 0.0, "hi": 0.9}
+    top = max((c for c in co.values() if c.rent_musd is not None), key=lambda c: c.rent_musd.expected)
+    r = top.rent_musd.expected
+    cost = 0.31 * r  # above E[u] x r = 0.3 r, below the best draws' 0.9 r
+    p["gets"]["Dynamic Line Rating"]["annual_cost_musd"] = _fixed(cost)
+    res = _ev_direct(result, p, point_rent=True, draws=2000)
+    cid = top.constraint_id
+    assert res.expected_if_applies[cid]["Dynamic Line Rating"] == pytest.approx(0.3 * r - cost)
+    assert res.ev_mean[cid] == 0.0 and res.recommended[cid] == NO_GET
+    assert res.p_best[cid][NO_GET] == 1.0
+
+
+def test_relief_scale_shrinks_relief_for_its_class_only(region):
+    result = run_pipeline(region, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 1.0)
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = _fixed(0.1)
+    p["gets"]["Dynamic Line Rating"]["relief_scale"] = {"line_n1": 0.5}
+    res = _ev_direct(result, p, point_rent=True, draws=50)
+    co = result.bucket_b.congestion
+    for cid, mean in res.ev_mean.items():
+        want = 0.1 * co[cid].rent_musd.expected * (0.5 if res.evidence[cid] == "line_n1" else 1.0)
+        assert mean == pytest.approx(want)
+    bad = deepcopy(p)
+    bad["gets"]["Dynamic Line Rating"]["relief_scale"] = {"nonsense": 0.5}
+    with pytest.raises(ValueError, match="relief_scale"):
+        validate_priors(bad)

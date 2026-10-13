@@ -4,12 +4,16 @@ For flowgate f and GET g:
 
     EV_g = applicable_g(f) x u_g x h x R_f - C_g
 
-- R_f: observed annual congestion rent on the flowgate ($M/yr, a Range with the
-  forward band). Rent = sum over binding hours of shadow price x flow, and a binding
-  flowgate flows at its limit, so the implied limit is R_f / sum|SP|. Relieving that
-  limit by a share u is worth (sum|SP|) x u x (R_f / sum|SP|) = u x R_f to first
-  order: ratings and line lengths, which are not public, drop out.
-- u_g: relief share the GET delivers during binding hours (a prior).
+- R_f: annual congestion rent on the flowgate ($M/yr). With a forward-rent calibration
+  (model/forward.py) it is next year's rent: observed rent x months-binding share x a
+  backtest ratio; otherwise the observed rent Range. Rent = sum over binding hours of
+  shadow price x flow, and a binding flowgate flows at its limit, so the implied limit
+  is R_f / sum|SP|. Relieving that limit by a share u is worth (sum|SP|) x u x
+  (R_f / sum|SP|) = u x R_f to first order: ratings and line lengths, which are not
+  public, drop out.
+- u_g: relief share the GET delivers during binding hours (a prior), times an optional
+  per-class relief scale (e.g. one line's DLR lifts a multi-element interface limit only
+  partly).
 - h: haircut for shadow prices falling as the limit rises and other constraints
   binding instead (a prior; first order overstates).
 - C_g: annualized cost of one deployment that relieves one flowgate ($M/yr, a prior).
@@ -27,17 +31,21 @@ priors file whose full content and sha256 are recorded in the run manifest. They
 assumptions, not data: they appear in each EV Range's basis, never as lineage leaves.
 EV lineage cites only observed facts (rent, the constraint row, its congestion row).
 
-Per Monte Carlo draw, u, h and C are shared across flowgates (they are uncertainty
-about the technology, not the element); applicability is drawn per element. Doing
-nothing is always an option (EV 0), so the best EV of a draw is never negative. The
-ranking metric is the mean over draws of the best EV: the expected net value, with the
-chance that no GET applies priced in. p_top_k (the share of draws a flowgate is in the
-top k by best EV with a positive best EV; zero-EV ties never count) is reported for
-stability but does not order the list: for the leaders it converges to P(some GET
-applies to the element), a constant per evidence class, so ordering by it would sort
-them by sampling noise. The recommendation is the GET with the highest expected net value
-if pursued, E[max(0, EV_g)] with EV_g counted only where g applies (none if no GET has a
-positive value); the share of draws each option is best is reported beside it."""
+The decision valued is the one a planner can make: study which GETs apply to the
+element, then deploy the applicable GET with the highest expected net value
+E[EV_g | g applies] = E[u_g] E[h] E[R_f] - E[C_g] (or nothing, if none is positive),
+before the realized relief, haircut, cost and next year's rent are known. Per Monte
+Carlo draw, applicability is drawn per element; u, h and C are drawn and shared across
+flowgates (uncertainty about the technology, not the element); rent is drawn per
+flowgate. A draw's realized value is the chosen GET's net value in that draw (negative
+when the deployment loses money) or 0. ev_mean, which ranks, is the expected value of
+the decision: the mean over applicability draws of the chosen GET's expected net value.
+The EV Range is the p5/p50/p95 of the realized value. p_top_k (the share of draws in the
+top k by realized value with a positive realized value) is reported for stability and
+does not order the list. The recommendation is the GET contributing most to ev_mean
+(none when no GET is ever worth deploying); how often each option is chosen and each
+GET's expected net value where it applies are reported beside it.
+"""
 
 from __future__ import annotations
 
@@ -92,6 +100,10 @@ def validate_priors(priors: dict) -> dict:
     if not isinstance(gets, dict) or set(gets) != set(SINGLE_GETS):
         raise ValueError(f"GET priors must define exactly {SINGLE_GETS}")
     for g, spec in gets.items():
+        scale = spec.get("relief_scale", {})
+        if not isinstance(scale, dict) or not set(scale) <= set(EVIDENCE_CLASSES) or any(
+                not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in scale.values()):
+            raise ValueError(f"GET prior {g}.relief_scale maps evidence classes to [0, 1]")
         ulo, _, uhi = _triangle(spec.get("relief_share", {}), f"{g}.relief_share")
         if ulo < 0 or uhi > 1:
             raise ValueError(f"GET prior {g}.relief_share must lie in [0, 1]")
@@ -140,7 +152,8 @@ class EVResult:
     p_top_k: dict[str, float]
     p_best: dict[str, dict[str, float]]  # constraint_id -> {option: share of draws}
     recommended: dict[str, str]
-    option_value: dict[str, dict[str, float]]  # cid -> {GET: E[max(0, EV_g) if applicable]}
+    option_value: dict[str, dict[str, float]]  # cid -> {GET: its share of the decision value}
+    expected_if_applies: dict[str, dict[str, float]]  # cid -> {GET: E[net value | applies]}
     candidates: dict[str, list[str]]  # GETs with nonzero applicability
     evidence: dict[str, str]
     unobserved: list[str]  # no observed rent: EV not computed
@@ -198,10 +211,16 @@ def run_ev(
     elements = {e: i for i, e in enumerate(sorted({c.corridor for c, _ in scored}))}
     element_of = np.array([elements[c.corridor] for c, _ in scored], dtype=int)
 
+    tri_mean = lambda spec, name: sum(_triangle(spec, name)) / 3.0
+    # relief scale by evidence class (1 unless the priors shrink relief for a class)
+    scale = {g: np.array([float((gets[g].get("relief_scale") or {}).get(evidence[c.constraint_id], 1.0))
+                          for c, _ in scored]) for g in SINGLE_GETS}
     best_all = np.empty((n, draws)) if n else np.empty((0, draws))
+    decision_sum = np.zeros(n)
     top_hits = np.zeros(n)
     best_counts = np.zeros((n, len(options)))
-    option_sums = np.zeros((n, len(options)))  # sum over draws of max(0, EV_g), 0 if n/a
+    option_sums = np.zeros((n, len(options)))  # sum over draws of the chosen option's mu
+    mu: dict[str, np.ndarray] = {}
     if n:
         lo = np.array([co.rent_musd.lo for _, co in scored])
         mode = np.array([co.rent_musd.expected for _, co in scored])
@@ -210,6 +229,19 @@ def run_ev(
             eps = ratio_sampler(forward)
             point = mode * np.array([forward_share(forward["predictor"], co.months_binding)
                                      for _, co in scored])
+            rent_mean = point * ratio_mean(forward)
+        else:
+            rent_mean = (lo + mode + hi) / 3.0
+        # Expected net value of each GET where it applies: what a planner can know before
+        # deploying (u, h, C and next year's rent are independent of applicability).
+        h_mean = (hlo + hmode + hhi) / 3.0
+        u_mean = {g: tri_mean(gets[g]["relief_share"], g) * scale[g] for g in SINGLE_GETS}
+        c_mean = {g: tri_mean(gets[g]["annual_cost_musd"], g) for g in SINGLE_GETS}
+        for g in SINGLE_GETS:
+            mu[g] = u_mean[g] * h_mean * rent_mean - c_mean[g]
+        dlr, apfc = SINGLE_GETS[0], SINGLE_GETS[1]
+        mu[COMBINATION] = ((1.0 - (1.0 - u_mean[dlr]) * (1.0 - u_mean[apfc])) * h_mean * rent_mean
+                           - c_mean[dlr] - c_mean[apfc])
         for start in range(0, draws, _CHUNK):
             d = min(_CHUNK, draws - start)
             if forward is not None:
@@ -226,53 +258,58 @@ def run_ev(
                 cost[g] = _tri(rng, *_triangle(gets[g]["annual_cost_musd"], g), (d,))
                 draw = rng.random((len(elements), d))  # one per element and GET
                 app[g] = draw[element_of] < p_app[g][:, None]
-                ev[g] = np.where(app[g], u[g] * h * rent - cost[g], -np.inf)
-            dlr, apfc = SINGLE_GETS[0], SINGLE_GETS[1]
-            u_c = 1.0 - (1.0 - u[dlr]) * (1.0 - u[apfc])
-            ev[COMBINATION] = np.where(app[dlr] & app[apfc],
-                                       u_c * h * rent - (cost[dlr] + cost[apfc]), -np.inf)
-            stack = np.stack([np.zeros((n, d)), *(ev[g] for g in options[1:])])
-            choice = stack.argmax(axis=0)  # ties go to the earlier option: none first
-            best = stack.max(axis=0)
-            best_all[:, start:start + d] = best
+                ev[g] = scale[g][:, None] * u[g] * h * rent - cost[g]
+            u_c = 1.0 - (1.0 - scale[dlr][:, None] * u[dlr]) * (1.0 - scale[apfc][:, None] * u[apfc])
+            ev[COMBINATION] = u_c * h * rent - (cost[dlr] + cost[apfc])
+            app[COMBINATION] = app[dlr] & app[apfc]
+            # The decision: learn which GETs apply, then deploy the one with the highest
+            # expected net value (or none). Realized u, h, C and rent are not known yet.
+            planned = np.stack([np.zeros((n, d)), *(np.where(app[g], mu[g][:, None], -np.inf)
+                                                     for g in options[1:])])
+            choice = planned.argmax(axis=0)  # ties go to the earlier option: none first
+            decided = planned.max(axis=0)  # expected value of the decision (>= 0)
+            realized = np.zeros((n, d))
+            for j, g in enumerate(options[1:], start=1):
+                realized = np.where(choice == j, ev[g], realized)
+            best_all[:, start:start + d] = realized
+            decision_sum += decided.sum(axis=1)
             for j in range(len(options)):
                 best_counts[:, j] += (choice == j).sum(axis=1)
-                option_sums[:, j] += np.maximum(stack[j], 0.0).sum(axis=1)
-            idx = np.argpartition(best, n - k, axis=0)[n - k:, :]
-            # a draw where the best option is doing nothing (EV 0) is never a top-k hit:
-            # otherwise zero-EV flowgates would enter the top k by tie-breaking alone
-            hit = np.take_along_axis(best, idx, axis=0) > 0
+                option_sums[:, j] += np.where(choice == j, decided, 0.0).sum(axis=1)
+            idx = np.argpartition(realized, n - k, axis=0)[n - k:, :]
+            # a draw where nothing is deployed or the deployment loses money is never a
+            # top-k hit: zero-value flowgates must not enter the top k by tie-breaking
+            hit = np.take_along_axis(realized, idx, axis=0) > 0
             np.add.at(top_hits, idx[hit], 1)
 
-    rent_term = ("forward rent (2025 observed rent x months-binding share x a backtest "
-                 f"ratio draw, mean {ratio_mean(forward):.3g})" if forward is not None
+    rent_term = (f"forward rent ({forward['predictor']} x a backtest ratio draw, ratio mean "
+                 f"{ratio_mean(forward):.3g})" if forward is not None
                  else "observed rent (forward band)")
     out_ev, out_mean, out_p, out_best, out_rec, out_cand = {}, {}, {}, {}, {}, {}
-    out_val = {}
+    out_val, out_mu = {}, {}
     for i, (c, co) in enumerate(scored):
         cid = c.constraint_id
         p5, p50, p95 = (float(x) for x in np.percentile(best_all[i], [5, 50, 95]))
-        out_mean[cid] = float(best_all[i].mean())
+        out_mean[cid] = float(decision_sum[i]) / draws
+        out_mu[cid] = {g: float(mu[g][i]) for g in options[1:]}
         out_ev[cid] = store.add(derived_range(
             lo=p5, expected=p50, hi=p95,
             basis=(
-                f"Best-GET net value ($M/yr): per draw, max(0, relief share x haircut x "
-                f"{rent_term} - annualized cost) over the GETs drawn applicable to the "
-                f"element (none applicable: 0); p5/p50/p95 over {draws} draws, mean "
-                f"{out_mean[cid]:.4g} ranks; evidence class {evidence[cid]}; priors "
-                f"{priors['version']} (sha256 {sha[:12]}) are cited assumptions, not "
-                f"observations."
+                f"Net value ($M/yr) of the decision: learn which GETs apply to the element, "
+                f"deploy the one with the highest expected net value (relief share x haircut "
+                f"x {rent_term} - annualized cost), or none if no applicable GET has a "
+                f"positive one. Mean {out_mean[cid]:.4g} (ranks); p5/p50/p95 over {draws} "
+                f"draws of the realized value, negative when a deployment loses money; "
+                f"evidence class {evidence[cid]}; priors {priors['version']} (sha256 "
+                f"{sha[:12]}) are cited assumptions, not observations."
             ),
             stage=STAGE, lineage_id=f"ev:{cid}",
             inputs=[co.rent_musd.lineage_id, f"obs:constraints:{cid}", *co.fact_ids],
         ))
         out_p[cid] = float(top_hits[i]) / draws
-        shares = {opt: float(best_counts[i, j]) / draws for j, opt in enumerate(options)}
-        out_best[cid] = shares
-        # the GET worth pursuing: the highest expected net value if it is the one pursued
-        # (0 where it turns out not to apply or not to pay); none if no GET is worth it.
-        # The most frequent best option would read "none" whenever every applicability
-        # probability is below one half, however large the expected value.
+        out_best[cid] = {opt: float(best_counts[i, j]) / draws for j, opt in enumerate(options)}
+        # the GET worth pursuing: the one contributing most to the decision's value, none
+        # when no GET is ever worth deploying
         value = {opt: float(option_sums[i, j]) / draws for j, opt in enumerate(options)}
         out_val[cid] = {o: v for o, v in value.items() if o != NO_GET}
         best_get = max(options[1:], key=lambda o: (value[o], -options.index(o)))
@@ -285,7 +322,7 @@ def run_ev(
             out_cand[cid].append(COMBINATION)
     return EVResult(
         ev=out_ev, ev_mean=out_mean, p_top_k=out_p, p_best=out_best, recommended=out_rec,
-        option_value=out_val,
+        option_value=out_val, expected_if_applies=out_mu,
         candidates=out_cand, evidence=evidence, unobserved=unobserved, k=k,
         priors_version=priors["version"], priors_sha256=sha,
     )

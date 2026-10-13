@@ -237,12 +237,12 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         if cid in res.recommended:
             best = res.recommended[cid]
             s.recommended_get = best
-            values = ", ".join(f"{g} {v:.3g}" for g, v in res.option_value[cid].items())
-            s.get_basis += (f"; GET = highest expected net value if pursued ($M/yr: "
-                            f"{values}); no GET applies or pays in "
-                            f"{s.get_probabilities.get('No cost-effective GET', 0):.0%} of draws "
-                            f"(priors {res.priors_version}, evidence {s.get_evidence}); "
-                            f"evidence rule: {s.get_rule}")
+            where = ", ".join(f"{g} {v:.3g}" for g, v in res.expected_if_applies[cid].items())
+            s.get_basis += (f"; GET = the largest share of the decision's expected value; "
+                            f"expected net value where each applies ($M/yr): {where}; nothing "
+                            f"is deployed in {s.get_probabilities.get('No cost-effective GET', 0):.0%} "
+                            f"of draws (priors {res.priors_version}, evidence "
+                            f"{s.get_evidence}); evidence rule: {s.get_rule}")
         else:
             s.get_basis += "; EV unobserved (no observed rent): GET from the evidence rule"
     extras["ev"] = {
