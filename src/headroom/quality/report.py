@@ -54,19 +54,29 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
             f"for every flowgate; the ranking rests on the remaining "
             f"{1 - unobserved_weight:.2f}."
         )
-    if market_heavy:
-        gaps.append(
-            f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
-            "the element, so the GET rule uses market facts only: breached and persistent "
-            "-> Combination, transformer -> APFC, N-1 branch outage -> APFC, BASE or "
-            "unknown contingency -> DLR. Each get_basis lists the GETs the evidence does "
-            "not rule out."
-        )
-
     ev = model.extras.get("ev")
+    ev_ranked = bool(ev) and ev["ranking"] == "ev"
+    if market_heavy:
+        rule = ("the evidence rule (get_rule) uses market facts only: breached and "
+                "persistent -> Combination, transformer -> APFC, N-1 branch outage -> APFC, "
+                "BASE or unknown contingency -> DLR")
+        if ev_ranked:
+            gaps.append(
+                f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
+                f"the element. recommended_get is the EV layer's most frequent best option "
+                f"(flowgates without observed rent keep the evidence rule); {rule}. Each "
+                "get_basis lists the GETs the evidence does not rule out."
+            )
+        else:
+            gaps.append(
+                f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
+                f"the element, so {rule}. Each get_basis lists the GETs the evidence does "
+                "not rule out."
+            )
+
     ev_section = None
     if ev:
-        mix = Counter(s.recommended_get for s in model.scores) if ev["ranking"] == "ev" else {}
+        mix = Counter(s.recommended_get for s in model.scores) if ev_ranked else {}
         ev_section = {
             "ranking": ev["ranking"],
             "priors_version": ev["priors_version"],
@@ -75,10 +85,14 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
             "n_unobserved_rent": len(ev["unobserved"]),
             "unobserved_rent": ev["unobserved"],
             "recommended_get_mix": dict(mix),
-            "note": ("Best-GET expected net value = max(0, P(applicable) x relief share x "
-                     "haircut x observed rent - annualized cost). Relief share, haircut, "
-                     "cost and applicability are cited judgement priors (config), not "
-                     "observations; the order of the shortlist rests on them."),
+            "note": ("Per draw, each GET is applicable to the element or not (drawn from "
+                     "its evidence-class probability); the draw's best net value is "
+                     "max(0, relief share x haircut x observed rent - annualized cost) over "
+                     "the applicable GETs. ev_mean (the mean over draws) ranks under "
+                     "ranking: ev; ev lo/expected/hi are its p5/p50/p95; p_top_k is the "
+                     "share of draws in the top k with a positive value. Relief share, "
+                     "haircut, cost and applicability are cited judgement priors (config), "
+                     "not observations; the order of the shortlist rests on them."),
         }
         if ev["unobserved"]:
             gaps.append(
@@ -103,14 +117,20 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
         "gaps": gaps,
     }
     if not bundle.region.synthetic and registry is not None:
-        # every source the run used, with its terms: a shareable export carries them
-        seen = {}
-        for stamps_ in bundle.table_sources.values():
+        # every source the run used, with its terms: a shareable export carries them.
+        # A source behind only unobserved tables gave nothing; it is listed apart.
+        used: dict[tuple, set] = {}
+        consulted: dict[tuple, set] = {}
+        for table, stamps_ in bundle.table_sources.items():
+            unobserved = tables.get(table, {}).get("coverage") == "unobserved"
             for st in stamps_:
-                seen[(st.source, st.source_version)] = st
-        report["attribution"] = [
-            {"source": src, "source_version": ver,
-             "basis": (registry.get(src).compliance.basis if registry.get(src) else "")}
-            for src, ver in sorted(seen)
-        ]
+                (consulted if unobserved else used).setdefault(
+                    (st.source, st.source_version), set()).add(table)
+        entry = lambda src, ver, ts: {
+            "source": src, "source_version": ver, "tables": sorted(ts),
+            "basis": (registry.get(src).compliance.basis if registry.get(src) else "")}
+        report["attribution"] = [entry(src, ver, ts) for (src, ver), ts in sorted(used.items())]
+        report["consulted_nothing_obtained"] = [
+            entry(src, ver, ts) for (src, ver), ts in sorted(consulted.items())
+            if (src, ver) not in used]
     return report

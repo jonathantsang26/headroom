@@ -32,11 +32,17 @@ def _report(result, d) -> int:
             "non-publishable) — wrote INTERNAL artifact."
         )
     print(f"  {m.n_constraints} flowgates, {len(m.shortlist)} corridors, shortlist k={m.k}")
-    print("  top corridors:")
+    ev_ranked = m.config.ranking == "ev"
+    print("  top corridors" + (" (by mean best-GET net value, $M/yr):" if ev_ranked else ":"))
     for i, c in enumerate(m.shortlist[:10], start=1):
+        if ev_ranked and c.get("ev_mean") is not None:
+            value = (f"EV={c['ev_mean']:.2f} p50 {c['ev_expected']:.2f} "
+                     f"[{c['ev_lo']:.2f}, {c['ev_hi']:.2f}]")
+        else:
+            value = (f"composite={c['composite_expected']:.3f} "
+                     f"[{c['composite_lo']:.3f}, {c['composite_hi']:.3f}]")
         print(f"    {i:2d}. {c['physical_corridor']}  p_top_k={c['p_top_k']:.2f}  "
-              f"composite={c['composite_expected']:.3f} "
-              f"[{c['composite_lo']:.3f}, {c['composite_hi']:.3f}]  {c['recommended_get']}")
+              f"{value}  {c['recommended_get']}")
     for gap in result.quality_report.get("gaps", []):
         print(f"  gap: {gap if len(gap) <= 160 else gap[:157] + '...'}")
     if result.quality_report.get("gaps"):

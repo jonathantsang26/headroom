@@ -94,6 +94,7 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
             "months_binding": co.months_binding if co and co.months_binding is not None else "",
         })
         row.update({
+            "ev_mean_musd": rnd(s.ev_mean, 6),
             "ev_lo_musd": rnd(s.ev.lo, 6) if s.ev else "",
             "ev_expected_musd": rnd(s.ev.expected, 6) if s.ev else "",
             "ev_hi_musd": rnd(s.ev.hi, 6) if s.ev else "",
@@ -118,13 +119,14 @@ def _slug(name: str) -> str:
 
 
 def _gate_blocked(result: PipelineResult) -> list[str]:
+    """Scores whose exported values (composite, and EV when present) fail the gate."""
     blocked = []
     for s in result.model.scores:
         try:
-            assert_publishable(
-                s.composite.lineage_id, result.store, result.registry,
-                public_only=True,
-            )
+            for env in (s.composite, s.ev):
+                if env is not None:
+                    assert_publishable(env.lineage_id, result.store, result.registry,
+                                       public_only=True)
         except PublishabilityError:
             blocked.append(s.constraint_id)
     return blocked
@@ -225,16 +227,6 @@ def deliver(
     manifest_path = out / f"run_manifest{suffix}.json"
 
     qr = result.quality_report
-    outputs = {
-        "scores_json": _atomic_write(rows_json, _json_bytes(rows)),
-        "shortlist_json": _atomic_write(shortlist_json, _json_bytes(corridors)),
-        "csv": _atomic_write(csv_path, _csv_bytes(rows)),
-        "quality_report": _atomic_write(quality_path, _json_bytes(qr)),
-    }
-    parquet_sha = _materialize_parquet(rows_json, parquet_path)
-    if parquet_sha is not None:
-        outputs["parquet"] = parquet_sha
-
     manifest = build_run_manifest(
         result.registry,
         run_label=f"{result.region.name}-{mode}",
@@ -253,8 +245,21 @@ def deliver(
         "tables": {t: e["coverage"] for t, e in qr.get("tables", {}).items()},
         "unobserved_weight_all": qr.get("unobserved_weight_all", 0.0),
     }
+    # Serialize everything before writing anything: a value that cannot be written
+    # fails here, not after the artifacts already replaced an earlier run's.
+    blobs = {
+        "scores_json": _json_bytes(rows),
+        "shortlist_json": _json_bytes(corridors),
+        "csv": _csv_bytes(rows),
+        "quality_report": _json_bytes(qr),
+    }
+    _json_bytes(manifest)
     names = {"scores_json": rows_json, "shortlist_json": shortlist_json, "csv": csv_path,
              "quality_report": quality_path, "parquet": parquet_path}
+    outputs = {key: _atomic_write(names[key], data) for key, data in blobs.items()}
+    parquet_sha = _materialize_parquet(rows_json, parquet_path)
+    if parquet_sha is not None:
+        outputs["parquet"] = parquet_sha
     # Per-file digests of the artifacts written beside this manifest (written last).
     manifest["outputs"] = {
         key: {"path": names[key].name, "sha256": digest} for key, digest in outputs.items()

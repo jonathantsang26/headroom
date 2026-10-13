@@ -172,8 +172,7 @@ def run_model(
     if cfg.get_priors:
         k = _apply_ev(scores, bucket_b, radial_by_cid, cfg, store, extras, k)
 
-    # rank flowgates: stability first, then the ranking quantity
-    scores.sort(key=lambda s: (s.p_top_k, _rank_value(s, cfg.ranking)), reverse=True)
+    scores.sort(key=lambda s: _rank_key(s, cfg.ranking), reverse=True)
 
     shortlist = _dedupe_to_corridors(scores, cfg.ranking)
     return ModelResult(
@@ -186,10 +185,15 @@ def run_model(
     )
 
 
-def _rank_value(s: Score, ranking: str) -> float:
+def _rank_key(s: Score, ranking: str) -> tuple:
+    """Composite: stability first (p_top_k), then the composite p50. EV: the mean
+    best-GET net value first. Under EV, p_top_k of the leaders converges to
+    P(some GET applies to the element), one value per evidence class, so ordering by
+    it first would sort them by sampling noise (model/ev.py)."""
     if ranking == "ev":
-        return s.ev.expected if s.ev is not None else float("-inf")
-    return s.composite.expected
+        mean = s.ev_mean if s.ev_mean is not None else float("-inf")
+        return (mean, s.p_top_k)
+    return (s.p_top_k, s.composite.expected)
 
 
 def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: ScoringConfig,
@@ -202,6 +206,7 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         cid = s.constraint_id
         s.get_rule = s.recommended_get
         s.ev = res.ev.get(cid)
+        s.ev_mean = res.ev_mean.get(cid)
         s.get_probabilities = res.p_best.get(cid, {})
         s.get_candidates = res.candidates.get(cid, [])
         s.get_evidence = res.evidence.get(cid, "")
@@ -212,8 +217,10 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         if cid in res.recommended:
             best = res.recommended[cid]
             s.recommended_get = best
-            s.get_basis += (f"; GET=EV best in {s.get_probabilities[best]:.0%} of draws "
-                            f"(priors {res.priors_version}, evidence {s.get_evidence})")
+            s.get_basis += (f"; GET = the option with the highest net value in "
+                            f"{s.get_probabilities[best]:.0%} of draws (priors "
+                            f"{res.priors_version}, evidence {s.get_evidence}); evidence "
+                            f"rule: {s.get_rule}")
         else:
             s.get_basis += "; EV unobserved (no observed rent): GET from the evidence rule"
     extras["ev"] = {
@@ -232,7 +239,7 @@ def _dedupe_to_corridors(scores: list[Score], ranking: str = "composite") -> lis
 
     rows: list[dict] = []
     for corridor, members in by_corridor.items():
-        best = max(members, key=lambda s: (s.p_top_k, _rank_value(s, ranking)))
+        best = max(members, key=lambda s: _rank_key(s, ranking))
         rows.append({
             "physical_corridor": corridor,
             "representative_flowgate": best.constraint_id,
@@ -254,14 +261,18 @@ def _dedupe_to_corridors(scores: list[Score], ranking: str = "composite") -> lis
         if best.ev is not None or any(m.ev is not None for m in members):
             evs = [m.ev for m in members if m.ev is not None]
             rows[-1].update({
+                "ev_mean": best.ev_mean,
                 "ev_lo": best.ev.lo if best.ev else None,
                 "ev_expected": best.ev.expected if best.ev else None,
                 "ev_hi": best.ev.hi if best.ev else None,
                 # sum over flowgates double-counts a shared deployment: an upper bound
+                "sum_ev_mean": sum(m.ev_mean for m in members if m.ev_mean is not None),
                 "sum_ev_expected": sum(e.expected for e in evs),
                 "get_probabilities": best.get_probabilities,
             })
-    key = "ev_expected" if ranking == "ev" else "composite_expected"
-    rows.sort(key=lambda r: (r["p_top_k"], r.get(key) if r.get(key) is not None
-                             else float("-inf")), reverse=True)
+    if ranking == "ev":
+        rows.sort(key=lambda r: (r["ev_mean"] if r.get("ev_mean") is not None
+                                 else float("-inf"), r["p_top_k"]), reverse=True)
+    else:
+        rows.sort(key=lambda r: (r["p_top_k"], r["composite_expected"]), reverse=True)
     return rows

@@ -18,7 +18,9 @@ For flowgate f and GET g:
   property of the physical element, so each draw takes one uniform per (element,
   GET) and every flowgate on that element compares it with its own class's
   probability: flowgates on one element agree, and a higher-probability class is
-  applicable whenever a lower one is.
+  applicable whenever a lower one is. The element is the corridor key: a line, an
+  interface, or all of a substation's transformers (SPP's public names do not tell
+  the banks apart), so transformers at one substation share their draws.
 
 Priors (u, h, C, applicability) are judgement with cited sources, loaded from a
 priors file whose full content and sha256 are recorded in the run manifest. They are
@@ -27,10 +29,13 @@ EV lineage cites only observed facts (rent, the constraint row, its congestion r
 
 Per Monte Carlo draw, u, h and C are shared across flowgates (they are uncertainty
 about the technology, not the element); applicability is drawn per element. Doing
-nothing is always an option (EV 0), so the best EV is never negative. The ranking
-metric is the best EV; p_top_k is the share of draws a flowgate is in the top k by
-best EV with a positive best EV (zero-EV ties never count); the recommendation is the
-GET most often best (or none)."""
+nothing is always an option (EV 0), so the best EV of a draw is never negative. The
+ranking metric is the mean over draws of the best EV: the expected net value, with the
+chance that no GET applies priced in. p_top_k (the share of draws a flowgate is in the
+top k by best EV with a positive best EV; zero-EV ties never count) is reported for
+stability but does not order the list: for the leaders it converges to P(some GET
+applies to the element), a constant per evidence class, so ordering by it would sort
+them by sampling noise. The recommendation is the option most often best (or none)."""
 
 from __future__ import annotations
 
@@ -73,6 +78,10 @@ def validate_priors(priors: dict) -> dict:
     """Check the priors file's shape; return it unchanged."""
     if not isinstance(priors, dict) or not isinstance(priors.get("version"), str):
         raise ValueError("GET priors need a version string")
+    try:  # recorded verbatim in the run manifest and hashed: JSON values only
+        json.dumps(priors, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"GET priors must hold JSON values only (quote dates): {exc}") from exc
     lo, _, hi = _triangle(priors.get("haircut", {}), "haircut")
     if lo < 0 or hi > 1:
         raise ValueError("GET prior haircut must lie in [0, 1]")
@@ -124,6 +133,7 @@ def evidence_class(c: Constraint, *, radial: bool | None, months_binding: int | 
 @dataclass
 class EVResult:
     ev: dict[str, Range]  # constraint_id -> best-EV Range ($M/yr, p5/p50/p95)
+    ev_mean: dict[str, float]  # constraint_id -> mean best EV over draws (ranks)
     p_top_k: dict[str, float]
     p_best: dict[str, dict[str, float]]  # constraint_id -> {option: share of draws}
     recommended: dict[str, str]
@@ -217,17 +227,20 @@ def run_ev(
             hit = np.take_along_axis(best, idx, axis=0) > 0
             np.add.at(top_hits, idx[hit], 1)
 
-    out_ev, out_p, out_best, out_rec, out_cand = {}, {}, {}, {}, {}
+    out_ev, out_mean, out_p, out_best, out_rec, out_cand = {}, {}, {}, {}, {}, {}
     for i, (c, co) in enumerate(scored):
         cid = c.constraint_id
         p5, p50, p95 = (float(x) for x in np.percentile(best_all[i], [5, 50, 95]))
+        out_mean[cid] = float(best_all[i].mean())
         out_ev[cid] = store.add(derived_range(
             lo=p5, expected=p50, hi=p95,
             basis=(
-                f"Best-GET expected net value ($M/yr) = max(0, P(applicable) x relief share "
-                f"x haircut x observed rent - annualized cost), p5/p50/p95 over {draws} "
-                f"draws; evidence class {evidence[cid]}; priors {priors['version']} "
-                f"(sha256 {sha[:12]}) are cited assumptions, not observations."
+                f"Best-GET net value ($M/yr): per draw, max(0, relief share x haircut x "
+                f"observed rent - annualized cost) over the GETs drawn applicable to the "
+                f"element (none applicable: 0); p5/p50/p95 over {draws} draws, mean "
+                f"{out_mean[cid]:.4g} ranks; evidence class {evidence[cid]}; priors "
+                f"{priors['version']} (sha256 {sha[:12]}) are cited assumptions, not "
+                f"observations."
             ),
             stage=STAGE, lineage_id=f"ev:{cid}",
             inputs=[co.rent_musd.lineage_id, f"obs:constraints:{cid}", *co.fact_ids],
@@ -243,7 +256,7 @@ def run_ev(
         if all(g in out_cand[cid] for g in SINGLE_GETS[:2]):
             out_cand[cid].append(COMBINATION)
     return EVResult(
-        ev=out_ev, p_top_k=out_p, p_best=out_best, recommended=out_rec,
+        ev=out_ev, ev_mean=out_mean, p_top_k=out_p, p_best=out_best, recommended=out_rec,
         candidates=out_cand, evidence=evidence, unobserved=unobserved, k=k,
         priors_version=priors["version"], priors_sha256=sha,
     )

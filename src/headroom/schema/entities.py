@@ -133,7 +133,8 @@ class Score(BaseModel):
     signal_coverage: dict[str, Coverage] = Field(default_factory=dict)
     get_basis: str = ""
     # Expected-value layer (model/ev.py), when the region configures GET priors.
-    ev: Range | None = None  # best-GET expected net value, $M/yr (p5/p50/p95)
+    ev: Range | None = None  # best-GET net value, $M/yr (p5/p50/p95 over draws)
+    ev_mean: float | None = None  # mean best-GET net value, $M/yr: ranks under EV
     p_top_k_composite: float | None = None  # composite rank stability when EV ranks
     get_probabilities: dict[str, float] = Field(default_factory=dict)  # option -> P(best)
     get_candidates: list[str] = Field(default_factory=list)

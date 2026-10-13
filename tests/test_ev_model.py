@@ -19,7 +19,7 @@ from headroom.model.ev import NO_GET, SINGLE_GETS, evidence_class, priors_sha256
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
 
-SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13"
+SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13.r2"
 PRIORS = yaml.safe_load((Path(__file__).parent / "fixtures" / "ev_priors_test.yaml").read_text())
 
 
@@ -74,9 +74,18 @@ def test_ev_ranks_the_real_subset_and_stays_shareable(region, tmp_path):
         closure = result.store.source_closure(s.ev.lineage_id)
         assert closure <= {"spp_binding_constraints", "spp_congestion_by_constraint"}
         assert "cited assumptions" in s.ev.basis
-    # ranked by EV rank stability, then EV
-    keys = [(s.p_top_k, s.ev.expected if s.ev else float("-inf")) for s in scores]
+    # ranked by the mean best-GET value, then EV rank stability
+    keys = [(s.ev_mean if s.ev_mean is not None else float("-inf"), s.p_top_k) for s in scores]
     assert keys == sorted(keys, reverse=True)
+    # p_top_k is the EV layer's, not the composite's
+    assert any(s.p_top_k != s.p_top_k_composite for s in ranked)
+    rows = result.model.shortlist
+    assert [r["ev_mean"] for r in rows if r.get("ev_mean") is not None] == sorted(
+        (r["ev_mean"] for r in rows if r.get("ev_mean") is not None), reverse=True)
+    for r in rows:  # the champion is the member with the highest mean value
+        members = [s for s in scores if s.physical_corridor == r["physical_corridor"]]
+        best = max(members, key=lambda s: s.ev_mean if s.ev_mean is not None else float("-inf"))
+        assert r["representative_flowgate"] == best.constraint_id
     d = deliver(result, tmp_path / "out")
     assert d.mode == "shareable"
     assert d.manifest["scoring"]["ranking"] == "ev"
@@ -122,6 +131,8 @@ def test_cost_above_any_relief_means_no_get(region):
     for s in result.model.scores:
         if s.ev is not None:
             assert s.recommended_get == NO_GET and s.ev.hi == 0.0
+        # every draw's best is doing nothing (EV 0): zero ties never enter the top k
+        assert s.p_top_k == 0.0
 
 
 def test_composite_ranking_keeps_ev_as_columns_only(region):
@@ -154,3 +165,112 @@ def test_evidence_classes():
     xf = Constraint(constraint_id="y", monitored_line=None, contingency_line=None,
                     ctype="transformer", contingency_name="BASE")
     assert evidence_class(xf, radial=None, months_binding=3) == "transformer_base"
+
+
+def _fixed(x):
+    return {"lo": x, "mode": x, "hi": x}
+
+
+def _ev_direct(result, priors, *, seed=7, draws=2000, point_rent=False):
+    """run_ev on a pipeline result's flowgates, optionally with every rent band
+    collapsed to its expected value (so only the priors vary between draws)."""
+    from types import SimpleNamespace
+
+    from headroom.model.ev import run_ev
+
+    bb = result.bucket_b
+    congestion = bb.congestion
+    if point_rent:
+        congestion = {
+            cid: co.model_copy(update={"rent_musd": co.rent_musd.model_copy(
+                update={"lo": co.rent_musd.expected, "hi": co.rent_musd.expected})})
+            if co.rent_musd is not None else co
+            for cid, co in congestion.items()
+        }
+    radial = {c.constraint_id: None for c in bb.constraints}
+    return run_ev(bb.constraints, SimpleNamespace(congestion=congestion), radial, priors,
+                  result.store, draws=draws, top_fraction=0.25, seed=seed)
+
+
+def _only(get, p_app, **fixed):
+    p = deepcopy(PRIORS)
+    p["haircut"] = _fixed(fixed.get("h", 1.0))
+    for g in SINGLE_GETS:
+        p["gets"][g]["annual_cost_musd"] = _fixed(0.0)
+        p["gets"][g]["applicability"] = {k: (p_app if g == get else 0.0)
+                                         for k in p["gets"][g]["applicability"]}
+    return p
+
+
+def test_priors_are_shared_across_flowgates_within_a_draw(region):
+    """With point rents, zero cost and DLR always applicable, a draw scales every
+    flowgate's value by the same relief share, so the top k is the same set in every
+    draw: p_top_k is exactly 0 or 1."""
+    result = run_pipeline(region, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 1.0)
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = {"lo": 0.01, "mode": 0.2, "hi": 0.6}
+    res = _ev_direct(result, p, point_rent=True)
+    assert set(res.p_top_k.values()) <= {0.0, 1.0}
+    assert sum(res.p_top_k.values()) == res.k  # rents are distinct: no ties at the cut
+
+
+def test_applicability_is_drawn_once_per_element(region):
+    """Flowgates on one physical element share each draw's applicability, so with one
+    applicability probability everywhere, every member of a corridor has the same
+    share of draws in which no GET applies; different elements are drawn apart."""
+    result = run_pipeline(region, scoring=_scoring())
+    res = _ev_direct(result, _only("Dynamic Line Rating", 0.5), draws=4000)
+    co = result.bucket_b.congestion
+    by_corridor = {}
+    for c in result.bucket_b.constraints:
+        rent = co.get(c.constraint_id)
+        if rent is not None and rent.rent_musd is not None and rent.rent_musd.lo > 0:
+            by_corridor.setdefault(c.corridor, []).append(res.p_best[c.constraint_id][NO_GET])
+    shared = [v for v in by_corridor.values() if len(v) > 1]
+    assert shared, "the subset has corridors with several flowgates"
+    assert all(len(set(v)) == 1 for v in shared)
+    assert len({v[0] for v in by_corridor.values()}) > 1  # elements are independent
+
+
+def test_haircut_cost_and_combination_enter_the_value(region):
+    """DLR (u 0.1) and APFC (u 0.2) both always applicable, haircut 0.5, costs 0.01
+    and 0.02: per draw the options are 0.05R-0.01, 0.10R-0.02 and the combination
+    (1-0.9x0.8)x0.5 R - 0.03 = 0.14R-0.03. With point rents the best value is exact."""
+    result = run_pipeline(region, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 1.0, h=0.5)
+    p["gets"]["Advanced Power Flow Control"]["applicability"] = dict(
+        p["gets"]["Dynamic Line Rating"]["applicability"])
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = _fixed(0.1)
+    p["gets"]["Advanced Power Flow Control"]["relief_share"] = _fixed(0.2)
+    p["gets"]["Dynamic Line Rating"]["annual_cost_musd"] = _fixed(0.01)
+    p["gets"]["Advanced Power Flow Control"]["annual_cost_musd"] = _fixed(0.02)
+    res = _ev_direct(result, p, point_rent=True, draws=200)
+    co = result.bucket_b.congestion
+    for cid, ev in res.ev.items():
+        r = co[cid].rent_musd.expected
+        options = {NO_GET: 0.0, "Dynamic Line Rating": 0.05 * r - 0.01,
+                   "Advanced Power Flow Control": 0.10 * r - 0.02, "Combination": 0.14 * r - 0.03}
+        want = max(options.values())
+        assert ev.lo == pytest.approx(want) and ev.hi == pytest.approx(want)
+        assert res.ev_mean[cid] == pytest.approx(want)
+        if want > 0 and len({round(v, 12) for v in options.values()}) == 4:
+            assert res.recommended[cid] == max(options, key=options.get)
+
+
+def test_ev_order_does_not_depend_on_the_seed_at_the_top(region):
+    """The leaders' order follows the mean value, not Monte Carlo noise in p_top_k."""
+    result = run_pipeline(region, scoring=_scoring())
+    tops = []
+    for seed in (1, 2, 3):
+        res = _ev_direct(result, PRIORS, seed=seed, draws=4000)
+        tops.append(sorted(res.ev_mean, key=res.ev_mean.get, reverse=True)[:3])
+    assert tops[0] == tops[1] == tops[2]
+
+
+def test_priors_with_non_json_values_are_refused_at_load():
+    import datetime
+
+    bad = deepcopy(PRIORS)
+    bad["accessed"] = datetime.date(2026, 10, 13)  # an unquoted YAML date
+    with pytest.raises(ValueError, match="JSON values only"):
+        validate_priors(bad)
