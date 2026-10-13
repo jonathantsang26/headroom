@@ -65,7 +65,9 @@ be replayed.
 links the source snapshot's raw files, checks each one against its recorded sha256,
 and re-runs the normalizers with the current code. The manifest keeps the source's
 `raw` entries unchanged and records `renormalized_from` (the source id and manifest
-sha256). Use it when an adapter fix changes what a snapshot's tables or notes should
+sha256). A live run also requires every publishable stamp to equal today's pin in
+`config/sources.yaml`. After a re-pin, an older snapshot loads only at a commit with its
+pins. Re-normalizing does not help, because the raw files keep their versions. Use it when an adapter fix changes what a snapshot's tables or notes should
 say. `2026-10-13.r2` was built this way: its nine tables are byte-identical to
 `2026-10-13`. Only the congestion table's coverage (now `partial`, because 18
 flowgates have no posted dollars) and its note changed.

@@ -33,6 +33,10 @@ Replay passes only at a commit whose pipeline code and source pins match the man
     SPP DA-BC, congestion-by-constraint and TCR files, or the SPP queue date. SPP
     re-dates the queue CSV on each refresh, so a new build first needs `spp_queue`
     re-pinned.
+  - Re-pinning has a cost. A live run refuses stamps that differ from today's pins, so
+    once `spp_queue` moves on, `2026-10-13.r2` and the committed test subset load only
+    at a commit with their pins. Re-stamp the test subset, or build it again from the
+    new snapshot, in the same commit.
   - It also fails if the congestion dollars trip a data-quality check.
 - **No network.** `--renormalize-from <snapshot> --revision N` re-runs the normalizers
   on an archived snapshot's raw files.
@@ -108,8 +112,10 @@ All ten bind under N-1 contingencies.
 - **GETs.** In the top 103, DLR is the GET worth pursuing for 82 and topology
   optimization for 21. Advanced power flow control's cost ($0.86M/yr at the mode)
   outweighs its value at the shortlist's rents.
-- **Sensitivity of the shortlist.** Moving any single prior to the low or high end of
-  its range keeps at least 93% of the top 103. The three it depends on most are:
+- **Sensitivity of the shortlist.** These perturbations each keep at least 93% of the
+  top 103: any single relief share, cost or the haircut moved to the low or high end
+  of its range, or any single applicability probability moved by ±0.25. The three it
+  depends on most are:
   - DLR relief share: 93% at its low end;
   - TO relief share: 93% at its low end;
   - DLR annual cost: 95% at its low end.
