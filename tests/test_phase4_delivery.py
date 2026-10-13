@@ -113,3 +113,19 @@ def test_csv_cells_cannot_start_a_spreadsheet_formula():
 
     text = _csv_bytes([{"name": "=HYPERLINK(\"x\")", "n": -1.5, "ok": "LN A - B"}]).decode()
     assert "'=HYPERLINK" in text and ",-1.5," in text and "LN A - B" in text
+
+
+def test_an_output_directory_holds_one_run(tmp_path):
+    from dataclasses import replace
+
+    from headroom.export import deliver
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    a = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60))
+    b = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=70, seed=3))
+    deliver(a, tmp_path)
+    deliver(a, tmp_path)  # the same run again: idempotent
+    with pytest.raises(FileExistsError, match="different run"):
+        deliver(b, tmp_path)
+    assert deliver(b, tmp_path, overwrite=True).manifest["output_sha256"] != ""

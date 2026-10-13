@@ -17,14 +17,14 @@ GATE_REFUSED = 2
 
 def _run(args) -> int:
     result = run_pipeline(args.region, scoring_path=args.scoring)
-    d = deliver(result, args.out)
+    d = deliver(result, args.out, overwrite=args.overwrite)
     return _report(result, d)
 
 
 def _reproduce(args) -> int:
     recorded = json.loads(Path(args.manifest).read_text())
     result = reproduce_from_manifest(recorded, data_dir=args.data_dir)
-    d = deliver(result, args.out)
+    d = deliver(result, args.out, overwrite=args.overwrite)
     compared = compare_replayed_outputs(recorded, d.manifest)
     print("Historical replay verified: inputs, runtime, ranking and export decision match"
           + (f"; identical artifacts: {', '.join(compared)}." if compared else
@@ -73,12 +73,16 @@ def main(argv=None) -> int:
     r.add_argument("--region", default="spp-synth")
     r.add_argument("--out", default="data/processed")
     r.add_argument("--scoring", default=None, help="path to scoring.yaml override")
+    r.add_argument("--overwrite", action="store_true",
+                   help="replace a different run already in --out")
     r.set_defaults(func=_run)
 
     replay = sub.add_parser("reproduce", help="verify and reproduce a recorded run")
     replay.add_argument("--manifest", required=True, help="path to the original run manifest")
     replay.add_argument("--out", required=True, help="directory for verified replay artifacts")
     replay.add_argument("--data-dir", help="relocated input directory (must match recorded pins)")
+    replay.add_argument("--overwrite", action="store_true",
+                        help="replace a different run already in --out")
     replay.set_defaults(func=_reproduce)
 
     args = p.parse_args(argv)

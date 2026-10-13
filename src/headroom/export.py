@@ -290,11 +290,26 @@ def _inputs_retrieved_at(result: PipelineResult) -> datetime:
     return max(times)
 
 
+def _refuse_other_run(out: Path, manifest: dict) -> None:
+    """An output directory holds one run: writing a different run's artifacts over
+    it (other inputs, ranking or export decision) needs overwrite=True."""
+    for existing in sorted(out.glob("run_manifest*.json")):
+        try:
+            old = json.loads(existing.read_text())
+        except (OSError, ValueError):
+            old = {}
+        if any(old.get(k) != manifest.get(k) for k in ("inputs", "output_sha256", "mode")):
+            raise FileExistsError(
+                f"{out} already holds a different run ({existing.name}); write to a new "
+                "directory or pass --overwrite")
+
+
 def deliver(
     result: PipelineResult,
     out_dir: str | Path,
     *,
     generated_at: datetime | None = None,
+    overwrite: bool = False,
 ) -> Delivery:
     out = Path(out_dir)
     if generated_at is None:
@@ -359,6 +374,8 @@ def deliver(
     if qr.get("attribution") is not None:
         manifest["attribution"] = qr["attribution"]
     _json_bytes(manifest)
+    if not overwrite:
+        _refuse_other_run(out, manifest)
     names = {"scores_json": rows_json, "shortlist_json": shortlist_json, "csv": csv_path,
              "quality_report": quality_path, "notice": notice_path, "parquet": parquet_path}
     outputs = {key: _atomic_write(names[key], data) for key, data in blobs.items()}
