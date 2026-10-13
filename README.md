@@ -52,7 +52,7 @@ file and column means: [OUTPUTS.md](docs/OUTPUTS.md).
 
 ## Status
 Verified on 2026-10-13. `headroom run --region spp` on snapshot `2026-10-13.r2`, at
-commit `6edb8bf`, writes a **shareable** export: the unchanged publishable gate passed
+commit `7d5a4d3`, writes a **shareable** export: the unchanged publishable gate passed
 all 2,072 scores, all nine input tables and every value in the lineage graph.
 `headroom reproduce` rebuilds the ranking (digest `a1119a03…`), the export decision,
 and byte-identical scores, shortlist, CSV, quality report and NOTICE. Later commits

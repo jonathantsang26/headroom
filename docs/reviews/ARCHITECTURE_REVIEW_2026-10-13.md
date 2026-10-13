@@ -23,6 +23,17 @@
 >   README Status, CROSSCHECK, SNAPSHOTS and BLIND_SPOTS were rewritten from the
 >   2026-10-13.r2 run. `requirements.lock` pins the environment. A release bundle and a
 >   recorded git commit in the manifest are still open.
+> - **After a final adversarial review of `d12f6fe..ae4d87a`** (19 confirmed findings),
+>   commits `9f2e016` through `7d5a4d3` changed the following:
+>   - EV values a decision made without hindsight, not a per-draw max(0, ·).
+>   - PUDL raw files must match today's pins.
+>   - The CBC tripwire also catches empty and outlier months.
+>   - Exports write missing numbers as null; `--overwrite` cleans up the previous run;
+>     replay cannot overwrite the run it verifies.
+>   - Interface relief is a separate `relief_scale` prior.
+>   - The forward-rent backtest is stored as data.
+>
+>   Still open from A18: `add()` overwriting silently, and mutable envelopes.
 
 **Repository:** `claude/real-public-snapshot`, worktree `determined-hawking-c7208e`.
 
