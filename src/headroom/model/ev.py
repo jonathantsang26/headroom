@@ -47,6 +47,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from headroom.model.forward import ratio_mean, ratio_sampler, share as forward_share
 from headroom.provenance.derived import derived_range
 from headroom.provenance.envelope import Range
 from headroom.provenance.lineage import LineageStore
@@ -164,9 +165,13 @@ def run_ev(
     draws: int,
     top_fraction: float,
     seed: int,
+    forward: dict | None = None,
 ) -> EVResult:
     """Monte Carlo EV of each flowgate's best GET. Uses its own random stream
-    (seed + 1) so the composite's draws are untouched."""
+    (seed + 1) so the composite's draws are untouched. With `forward`
+    (model/forward.py), each draw's rent is the observed rent x the months-binding
+    share x a draw from the backtest's ratio distribution; without it, a draw from
+    the rent Range."""
     rng = np.random.default_rng(seed + 1)
     sha = priors_sha256(priors)
     gets = priors["gets"]
@@ -197,9 +202,16 @@ def run_ev(
         lo = np.array([co.rent_musd.lo for _, co in scored])
         mode = np.array([co.rent_musd.expected for _, co in scored])
         hi = np.array([co.rent_musd.hi for _, co in scored])
+        if forward is not None:
+            eps = ratio_sampler(forward)
+            point = mode * np.array([forward_share(forward["predictor"], co.months_binding)
+                                     for _, co in scored])
         for start in range(0, draws, _CHUNK):
             d = min(_CHUNK, draws - start)
-            rent = _tri(rng, lo[:, None], mode[:, None], hi[:, None], (n, d))
+            if forward is not None:
+                rent = point[:, None] * eps(rng.random((n, d)))
+            else:
+                rent = _tri(rng, lo[:, None], mode[:, None], hi[:, None], (n, d))
             h = _tri(rng, hlo, hmode, hhi, (d,))
             ev = {}
             app = {}
@@ -227,6 +239,9 @@ def run_ev(
             hit = np.take_along_axis(best, idx, axis=0) > 0
             np.add.at(top_hits, idx[hit], 1)
 
+    rent_term = ("forward rent (2025 observed rent x months-binding share x a backtest "
+                 f"ratio draw, mean {ratio_mean(forward):.3g})" if forward is not None
+                 else "observed rent (forward band)")
     out_ev, out_mean, out_p, out_best, out_rec, out_cand = {}, {}, {}, {}, {}, {}
     for i, (c, co) in enumerate(scored):
         cid = c.constraint_id
@@ -236,7 +251,7 @@ def run_ev(
             lo=p5, expected=p50, hi=p95,
             basis=(
                 f"Best-GET net value ($M/yr): per draw, max(0, relief share x haircut x "
-                f"observed rent - annualized cost) over the GETs drawn applicable to the "
+                f"{rent_term} - annualized cost) over the GETs drawn applicable to the "
                 f"element (none applicable: 0); p5/p50/p95 over {draws} draws, mean "
                 f"{out_mean[cid]:.4g} ranks; evidence class {evidence[cid]}; priors "
                 f"{priors['version']} (sha256 {sha[:12]}) are cited assumptions, not "

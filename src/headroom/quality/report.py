@@ -85,6 +85,9 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
             "n_unobserved_rent": len(ev["unobserved"]),
             "unobserved_rent": ev["unobserved"],
             "recommended_get_mix": dict(mix),
+            "forward_rent": ({k: ev["forward_rent"].get(k) for k in (
+                "predictor", "ratio_quantiles", "ratio_mean", "derived_from_snapshot",
+                "backtest")} if ev.get("forward_rent") else None),
             "note": ("Per draw, each GET is applicable to the element or not (drawn from "
                      "its evidence-class probability); the draw's best net value is "
                      "max(0, relief share x haircut x observed rent - annualized cost) over "
@@ -92,7 +95,13 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
                      "ranking: ev; ev lo/expected/hi are its p5/p50/p95; p_top_k is the "
                      "share of draws in the top k with a positive value. Relief share, "
                      "haircut, cost and applicability are cited judgement priors (config), "
-                     "not observations; the order of the shortlist rests on them."),
+                     "not observations; the order of the shortlist rests on them."
+                     + (" Rent in each draw is forward rent: the 2025 observed rent x the "
+                        "share of months the flowgate bound in x a ratio drawn from a "
+                        "within-2025 held-out-months backtest (forward_rent). No cross-year "
+                        "test exists yet." if ev.get("forward_rent") else
+                        " Rent in each draw is the 2025 observed rent with a -40%/+50% band, "
+                        "which held-out months show is far too narrow.")),
         }
         if ev["unobserved"]:
             gaps.append(

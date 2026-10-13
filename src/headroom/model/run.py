@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from headroom.model.ev import load_priors, run_ev, validate_priors
+from headroom.model.forward import validate_forward
 from headroom.model.get_match import get_basis, recommend_get
 from headroom.model.score import composite_from_percentiles
 from headroom.model.signals import (
@@ -44,6 +45,7 @@ class ScoringConfig:
     get_priors: dict | None = None  # full priors content (model/ev.py), not a path
     reference_rule: dict | None = None  # how the references were derived (recorded)
     definitions: dict[str, str] = field(default_factory=dict)  # signal variants
+    forward_rent: dict | None = None  # EV forward-rent calibration (model/forward.py)
 
     def __post_init__(self) -> None:
         for name, value in self.definitions.items():
@@ -55,6 +57,8 @@ class ScoringConfig:
             raise ValueError("ranking: ev needs get_priors")
         if self.get_priors is not None:
             validate_priors(self.get_priors)
+        if self.forward_rent is not None:
+            validate_forward(self.forward_rent)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "ScoringConfig":
@@ -75,6 +79,7 @@ class ScoringConfig:
             get_priors=load_priors(_REPO_ROOT / priors) if priors else None,
             reference_rule=raw.get("reference_rule"),
             definitions=dict(raw.get("definitions") or {}),
+            forward_rent=raw.get("forward_rent"),
         )
 
     @classmethod
@@ -91,6 +96,7 @@ class ScoringConfig:
             get_priors=scoring.get("get_priors"),
             reference_rule=scoring.get("reference_rule"),
             definitions=dict(scoring.get("definitions") or {}),
+            forward_rent=scoring.get("forward_rent"),
         )
 
 
@@ -214,7 +220,8 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
     """Attach the EV layer; when the region ranks by EV, it also sets p_top_k and
     the recommended GET (the evidence rule's choice stays in get_rule)."""
     res = run_ev(bb.constraints, bb, radial_by_cid, cfg.get_priors, store,
-                 draws=cfg.draws, top_fraction=cfg.top_fraction, seed=cfg.seed)
+                 draws=cfg.draws, top_fraction=cfg.top_fraction, seed=cfg.seed,
+                 forward=cfg.forward_rent)
     for s in scores:
         cid = s.constraint_id
         s.get_rule = s.recommended_get
@@ -239,6 +246,7 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
     extras["ev"] = {
         "ranking": cfg.ranking, "k": res.k, "unobserved": res.unobserved,
         "priors_version": res.priors_version, "priors_sha256": res.priors_sha256,
+        "forward_rent": cfg.forward_rent,
     }
     return res.k if cfg.ranking == "ev" else k
 

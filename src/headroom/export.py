@@ -58,6 +58,8 @@ def scoring_to_manifest(scoring) -> dict:
         out["reference_rule"] = scoring.reference_rule
     if scoring.definitions:
         out["definitions"] = scoring.definitions
+    if scoring.forward_rent is not None:
+        out["forward_rent"] = scoring.forward_rent
     return out
 
 
