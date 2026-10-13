@@ -36,6 +36,14 @@ class LineageStore:
     def __len__(self) -> int:
         return len(self._nodes)
 
+    def leaves(self) -> list[Envelope]:
+        """Every raw observation in the store (nodes with no inputs)."""
+        return [n for n in self._nodes.values() if not n.inputs]
+
+    def dangling_inputs(self) -> set[str]:
+        """Input ids that some node cites but the store does not hold."""
+        return {i for n in self._nodes.values() for i in n.inputs if i not in self._nodes}
+
     def source_closure(self, lineage_id: str) -> set[str]:
         """The set of registered *root* source names this value depends on."""
         sources: set[str] = set()

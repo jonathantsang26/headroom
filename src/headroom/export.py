@@ -33,6 +33,8 @@ class Delivery:
     public_only: bool
     blocked: list[str]  # constraint_ids whose lineage is non-publishable
     blocked_tables: list[str] = field(default_factory=list)  # non-publishable input tables
+    # any other leaf source in the store that fails the gate, and unresolved input ids
+    blocked_sources: list[str] = field(default_factory=list)
     paths: dict[str, str] = field(default_factory=dict)
     manifest: dict = field(default_factory=dict)
 
@@ -147,6 +149,25 @@ def _tables_blocked(result: PipelineResult) -> list[str]:
     return sorted(blocked)
 
 
+def _store_blocked(result: PipelineResult) -> list[str]:
+    """The whole store, not only what scores and tables reach: every leaf's source
+    must pass the gate and every cited input must resolve, so a value minted outside
+    the score and table paths cannot reach a shareable artifact unchecked."""
+    by_source: dict[str, str] = {}
+    for leaf in result.store.leaves():
+        by_source.setdefault(leaf.source, leaf.lineage_id)
+    blocked = []
+    for source, lineage_id in sorted(by_source.items()):
+        try:
+            assert_publishable(lineage_id, result.store, result.registry, public_only=True)
+        except PublishabilityError:
+            blocked.append(source)
+    dangling = result.store.dangling_inputs()
+    if dangling:
+        blocked.append(f"unresolved inputs ({len(dangling)}, e.g. {sorted(dangling)[0]})")
+    return blocked
+
+
 def _atomic_write(path: Path, data: bytes) -> str:
     """Write beside the destination and rename, so a reader never sees a partial
     artifact; returns the bytes' sha256 for the run manifest."""
@@ -210,7 +231,8 @@ def deliver(
 
     blocked = _gate_blocked(result)
     blocked_tables = _tables_blocked(result)
-    if blocked or blocked_tables:
+    blocked_sources = _store_blocked(result)
+    if blocked or blocked_tables or blocked_sources:
         # Non-public (synthetic) lineage -> shareable export refused by the gate.
         mode, public_only, suffix = "internal-synthetic", False, ".INTERNAL.synthetic"
     else:
@@ -278,7 +300,7 @@ def deliver(
 
     return Delivery(
         mode=mode, public_only=public_only, blocked=blocked, blocked_tables=blocked_tables,
-        paths=paths, manifest=manifest,
+        blocked_sources=blocked_sources, paths=paths, manifest=manifest,
     )
 
 
@@ -287,10 +309,12 @@ def export_shareable_or_raise(result: PipelineResult, out_dir: str | Path) -> De
     publishable. Used where only a shareable artifact is acceptable."""
     blocked = _gate_blocked(result)
     blocked_tables = _tables_blocked(result)
-    if blocked or blocked_tables:
+    blocked_sources = _store_blocked(result)
+    if blocked or blocked_tables or blocked_sources:
         raise PublishabilityError(
             f"Shareable export refused: {len(blocked)} scores have non-publishable "
             f"lineage (e.g. {blocked[:3]}); non-publishable input tables: "
-            f"{blocked_tables}. This is a synthetic/non-public run."
+            f"{blocked_tables}; non-publishable sources in lineage: {blocked_sources}. "
+            "This is a synthetic/non-public run."
         )
     return deliver(result, out_dir)

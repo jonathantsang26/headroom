@@ -19,6 +19,25 @@ from headroom.reconstruct import BucketBResult, run_bucket_b
 from headroom.sources import SourceRegistry, load_registry
 
 
+def check_stamp_pins(bundle, registry: SourceRegistry) -> None:
+    """Every publishable stamp a live snapshot carries (table, contributor, column)
+    must be the version config/sources.yaml pins today, or the run manifest's
+    `sources` block would certify inputs the run did not read. Fail closed: rebuild
+    the snapshot, or check out the commit whose pins it was built under."""
+    wrong = []
+    for table, stamps in sorted(bundle.table_sources.items()):
+        for st in stamps:
+            spec = registry.get(st.source)
+            if spec is None:
+                wrong.append(f"{table}: {st.source} is not a registered source")
+            elif spec.publishable and st.source_version != spec.source_version:
+                wrong.append(f"{table}: {st.source} {st.source_version} (pinned "
+                             f"{spec.source_version})")
+    if wrong:
+        raise ValueError("Snapshot stamps differ from the registry pins: "
+                         + "; ".join(sorted(set(wrong))))
+
+
 @dataclass
 class PipelineResult:
     region: RegionConfig
@@ -54,6 +73,8 @@ def run_pipeline(
     bundle = ingest_region(
         region_name, store, data_dir=data_dir, expected_inputs=expected_inputs,
     )
+    if not bundle.region.synthetic:
+        check_stamp_pins(bundle, registry)
     check_reference_rule(scoring, bundle.input_identity)
     bucket_a = run_bucket_a(bundle, store)
     bucket_b = run_bucket_b(bundle, bucket_a, store)

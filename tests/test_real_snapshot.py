@@ -143,3 +143,34 @@ def test_column_sources_must_be_table_stamps_and_loader_stamped(tmp_path, monkey
 
     with pytest.raises(ValueError, match="not supported"):
         run_pipeline(_region(monkeypatch, _copy_with(tmp_path / "b", unstamped)), scoring=scoring)
+
+
+def test_a_non_publishable_leaf_anywhere_in_the_store_blocks_the_export(tmp_path, monkeypatch, scoring):
+    """Even a value no score or table reaches (say, a future CEII-backed label)
+    keeps the export internal, and so does an input id nothing resolves."""
+    from datetime import datetime, timezone
+
+    from headroom.provenance.derived import derived_range
+    from headroom.provenance.real import SourceStamp, real_fact
+
+    result = run_pipeline(_region(monkeypatch, SUBSET), scoring=scoring)
+    result.store.add(real_fact(
+        value=1.0, lineage_id="obs:side_channel", stamp=SourceStamp(
+            "synthetic_fixture", "synthetic", datetime(2026, 10, 13, tzinfo=timezone.utc))))
+    d = deliver(result, tmp_path / "a")
+    assert d.mode == "internal-synthetic" and d.blocked == [] and d.blocked_tables == []
+    assert d.blocked_sources == ["synthetic_fixture"]
+
+    clean = run_pipeline(_region(monkeypatch, SUBSET), scoring=scoring)
+    clean.store.add(derived_range(lo=0, expected=1, hi=2, basis="test", stage="test",
+                                  lineage_id="derived:orphan", inputs=["obs:missing"]))
+    d = deliver(clean, tmp_path / "b")
+    assert d.mode == "internal-synthetic" and d.blocked_sources[0].startswith("unresolved inputs")
+
+
+def test_stamps_must_match_todays_pins(tmp_path, monkeypatch, scoring):
+    def stale(m):  # e.g. a snapshot built under an earlier DA-BC pin
+        m["tables"]["constraints"]["source_version"] = "spp_da_bc_2025"
+
+    with pytest.raises(ValueError, match="differ from the registry pins"):
+        run_pipeline(_region(monkeypatch, _copy_with(tmp_path, stale)), scoring=scoring)
