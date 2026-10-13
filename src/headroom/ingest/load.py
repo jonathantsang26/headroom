@@ -114,6 +114,8 @@ class IngestBundle:
     table_lineage: dict[str, list[str]] = field(default_factory=dict)
     # table -> {"coverage": observed|partial|unobserved, "note": str}
     table_coverage: dict[str, dict] = field(default_factory=dict)
+    # every source stamp a live table carries (own, contributors, column sources)
+    table_sources: dict[str, list[SourceStamp]] = field(default_factory=dict)
 
 
 def ingest_region(
@@ -173,6 +175,9 @@ def _load_live(
         column_sources=column_sources,
     )
     bundle.table_stamps = stamps
+    bundle.table_sources = {
+        t: [stamps[t], *contributors[t], *column_sources[t].values()] for t in REQUIRED_TABLES
+    }
     return bundle
 
 

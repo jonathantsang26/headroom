@@ -11,7 +11,8 @@ from headroom.ingest.snapshot import REQUIRED_TABLES
 from headroom.model.signals import SIGNAL_NAMES
 
 
-def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dict:
+def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
+                         registry=None) -> dict:
     stamps = bundle.table_stamps
     tables = {}
     for t in REQUIRED_TABLES:
@@ -85,7 +86,7 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dic
                 "their EV is not computed; they are listed, not ranked."
             )
 
-    return {
+    report = {
         "region": bundle.region.name,
         "synthetic": bundle.region.synthetic,
         "tables": tables,
@@ -101,3 +102,15 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dic
         "ev": ev_section,
         "gaps": gaps,
     }
+    if not bundle.region.synthetic and registry is not None:
+        # every source the run used, with its terms: a shareable export carries them
+        seen = {}
+        for stamps_ in bundle.table_sources.values():
+            for st in stamps_:
+                seen[(st.source, st.source_version)] = st
+        report["attribution"] = [
+            {"source": src, "source_version": ver,
+             "basis": (registry.get(src).compliance.basis if registry.get(src) else "")}
+            for src, ver in sorted(seen)
+        ]
+    return report

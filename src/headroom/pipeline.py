@@ -69,5 +69,5 @@ def run_pipeline(
         scoring=scoring,
         input_identity=bundle.input_identity,
         runtime=runtime,
-        quality_report=build_quality_report(bundle, bucket_a, bucket_b, model),
+        quality_report=build_quality_report(bundle, bucket_a, bucket_b, model, registry),
     )

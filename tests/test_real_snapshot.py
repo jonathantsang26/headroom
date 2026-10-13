@@ -73,6 +73,9 @@ def test_real_subset_clears_the_gate_and_reports_its_gaps(tmp_path, monkeypatch,
     assert d.mode == "shareable" and d.public_only and d.blocked == []
     assert (tmp_path / "out" / "shortlist.csv").exists()
     qr = json.loads(Path(d.paths["quality_report"]).read_text())
+    sources = {a["source"]: a for a in qr["attribution"]}
+    assert {"spp_congestion_by_constraint", "spp_binding_constraints", "hifld_transmission"} <= set(sources)
+    assert all("terms-conditions" in a["basis"] for name, a in sources.items() if name.startswith("spp_"))
     assert qr["dc_screen"]["status"].startswith("not_run")
     assert qr["unobserved_weight_all"] == pytest.approx(0.5)  # loading+demand+planning
     affected = {a["signal"]: a for a in qr["scores_affected"]}
