@@ -453,8 +453,28 @@ def test_a_truncated_congestion_month_trips_the_build(tmp_path, served):
     """A header-only July file is a degraded source, not a month without congestion."""
     header = CBC_BYTES[7].decode("utf-8").split("\n", 1)[0] + "\n"
     snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 7: header.encode("utf-8")})
-    with pytest.raises(ValueError, match="tripwires: 2025-07 congestion-by-constraint"):
+    with pytest.raises(ValueError, match="tripwires: 2025-07 has no"):
         spp.normalize(snap)
+
+
+def test_a_month_missing_from_both_dollar_files_trips_the_build(tmp_path, served):
+    """Header-only congestion and funding files for one month: the ratio cannot be
+    formed, and the month must not pass as a month without congestion."""
+    cbc_head = CBC_BYTES[7].decode("utf-8").split("\n", 1)[0] + "\n"
+    tcr_head = TCR_BYTES[7].decode("utf-8").split("\n", 1)[0] + "\n"
+    snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 7: cbc_head.encode()},
+                     tcr={**TCR_BYTES, 7: tcr_head.encode()})
+    with pytest.raises(ValueError, match="2025-07 has no"):
+        spp.normalize(snap)
+
+
+def test_a_month_far_from_the_years_ratio_trips_the_build(monkeypatch):
+    money = {"cbc_month": {m: 120.0 for m in spp.MONTHS}, "tcr_month": {m: 100.0 for m in spp.MONTHS}}
+    money["cbc_month"][5] = 82.0  # a truncated May: 0.82x, inside the absolute band
+    with pytest.raises(ValueError, match="2025-05 .* median 1.20"):
+        spp._congestion_tripwires(money, 1.0, 2025)
+    money["cbc_month"][5] = 120.0
+    spp._congestion_tripwires(money, 1.0, 2025)  # a healthy year passes
 
 
 def test_a_join_that_leaves_most_binding_value_without_dollars_trips_the_build(

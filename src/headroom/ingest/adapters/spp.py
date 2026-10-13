@@ -40,9 +40,12 @@ QUEUE_URL = "https://opsportal.spp.org/Studies/GenerateActiveCSV"
 QUEUE_RAW = "raw:spp_gi_active_queue"
 MAX_CSV_BYTES = 512 << 20  # uncompressed cap for the zipped DA-BC CSV
 # Build tripwires on the congestion $ (a degraded file or join must not pass as data):
-# each month's congestion-by-constraint total over SPP's settled DA Collected (2025:
-# 1.17-1.48), and the share of kept |shadow price| whose flowgates joined a $ row.
+# every month must have $ in both files; each month's congestion-by-constraint total
+# over SPP's settled DA Collected (2025: 1.17-1.48) must lie in an absolute band and
+# within a band around the year's median ratio (a truncated month falls out of it);
+# and the share of kept |shadow price| whose flowgates joined a $ row has a floor.
 MONTH_CBC_TCR_RATIO = (0.8, 2.0)
+MONTH_RATIO_VS_MEDIAN = (0.8, 1.5)
 JOIN_FLOOR = 0.95
 
 BC_COLUMNS = (
@@ -246,12 +249,24 @@ def _congestion_tripwires(money: dict, joined_share: float, year: int) -> None:
     settled DA Collected (a truncated or re-keyed file), or a join that leaves much of
     the binding value without $."""
     lo, hi = MONTH_CBC_TCR_RATIO
-    bad = []
+    rlo, rhi = MONTH_RATIO_VS_MEDIAN
+    bad, ratios = [], {}
     for month in MONTHS:
         cbc, tcr = money["cbc_month"].get(month, 0.0), money["tcr_month"].get(month, 0.0)
-        if tcr > 0 and not lo <= cbc / tcr <= hi:
+        if cbc <= 0 or tcr <= 0:
+            bad.append(f"{year}-{month:02d} has no $ (congestion-by-constraint "
+                       f"${cbc / 1e6:,.1f}M, DA Collected ${tcr / 1e6:,.1f}M)")
+            continue
+        ratios[month] = cbc / tcr
+        if not lo <= cbc / tcr <= hi:
             bad.append(f"{year}-{month:02d} congestion-by-constraint ${cbc / 1e6:,.1f}M is "
                        f"{cbc / tcr:.2f}x DA Collected ${tcr / 1e6:,.1f}M")
+    if ratios:
+        median = sorted(ratios.values())[len(ratios) // 2]
+        for month, r in ratios.items():
+            if lo <= r <= hi and not rlo * median <= r <= rhi * median:
+                bad.append(f"{year}-{month:02d} congestion-by-constraint / DA Collected is "
+                           f"{r:.2f}, against the year's median {median:.2f}")
     if joined_share < JOIN_FLOOR:
         bad.append(f"only {joined_share:.1%} of kept |shadow price| joined a $ row "
                    f"(floor {JOIN_FLOOR:.0%})")

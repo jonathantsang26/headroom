@@ -135,6 +135,17 @@ def require_pin(source: str, observed_version: str) -> str:
     return pinned
 
 
+def require_raw_url(entry: dict, expected_url: str, source: str) -> dict:
+    """A raw file must be the one today's pin names. Normalizing re-used bytes under a
+    newer pin would stamp a table with a version it was not read from."""
+    if entry.get("url") != expected_url:
+        raise RuntimeError(
+            f"{source}: raw file came from {entry.get('url')!r}, but config/sources.yaml "
+            f"now pins {expected_url!r}. Re-pin deliberately and fetch again; never "
+            "relabel old bytes.")
+    return entry
+
+
 def write_table(
     snapshot_dir: Path,
     table: str,

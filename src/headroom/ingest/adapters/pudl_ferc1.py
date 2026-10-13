@@ -14,6 +14,7 @@ from pathlib import Path
 from headroom.ingest.adapters.common import (
     download,
     raw_entry,
+    require_raw_url,
     record_raw,
     region_spec,
     registry_pin,
@@ -328,7 +329,8 @@ def _mi(rows: list[dict], col: str) -> float:
 
 
 def normalize(snapshot_dir: Path) -> None:
-    raw = raw_entry(snapshot_dir, RAW_NAME)
+    raw = require_raw_url(raw_entry(snapshot_dir, RAW_NAME),
+                          release_url(release_from_pin(registry_pin(SOURCE))), SOURCE)
     hifld_rows, hifld_stamp = _read_hifld(snapshot_dir)
     ids = sorted(int(k) for k in region_spec()["ferc1_respondents"])
     year, source_rows = _read_release(raw["abspath"], ids)

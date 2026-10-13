@@ -114,7 +114,9 @@ def fetch(snapshot_dir: Path) -> dict:
         expected = _read_json(count_path).get("count")
         if not isinstance(expected, int) or expected < 0:
             raise RuntimeError(f"HIFLD count query returned {expected!r}")
-        max_pages = expected // PAGE + 2  # a server ignoring resultOffset cannot loop forever
+        # each page adds at least one feature (an empty page ends the loop), so a server
+        # ignoring resultOffset overruns the count; a smaller maxRecordCount is fine
+        max_pages = expected + 2
         page = 0
         while True:
             if page >= max_pages or len(features) > expected:

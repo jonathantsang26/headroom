@@ -57,15 +57,19 @@ def test_guard_refuses_references_from_another_congestion_table(monkeypatch):
     manifest = json.loads((SUBSET / "snapshot_manifest.json").read_text())
     sha = manifest["tables"]["congestion"]["sha256"]
     ok = replace(ScoringConfig.load(), draws=50, reference_rule={
-        "derived_from_snapshot": "subset", "congestion_sha256": sha})
+        "derived_from_snapshot": "subset", "congestion_sha256": sha,
+        "coi_definition": "rent_x_persistence"})
     run_pipeline(region.name, scoring=ok)  # matching table: runs
     wrong = replace(ok, reference_rule={"derived_from_snapshot": "other",
-                                        "congestion_sha256": "0" * 64})
+                                        "congestion_sha256": "0" * 64,
+                                        "coi_definition": "rent_x_persistence"})
     with pytest.raises(ValueError, match="derive_scoring_refs"):
         run_pipeline(region.name, scoring=wrong)
     check_reference_rule(replace(ok, reference_rule=None), {})  # no rule: no guard
     with pytest.raises(ValueError, match="records no congestion_sha256"):
         check_reference_rule(replace(ok, reference_rule={"derived_from_snapshot": "x"}), {})
+    with pytest.raises(ValueError, match="records no coi_definition"):
+        check_reference_rule(replace(ok, reference_rule={"congestion_sha256": sha}), {})
 
 
 @pytest.mark.skipif(not LIVE.exists(), reason="the pinned live snapshot is not on this machine")

@@ -11,6 +11,7 @@ from pathlib import Path
 from headroom.ingest.adapters.common import (
     download,
     raw_entry,
+    require_raw_url,
     record_raw,
     region_spec,
     registry_pin,
@@ -87,9 +88,15 @@ def fetch(snapshot_dir: Path) -> dict:
     return {"bytes": total}
 
 
+def _pudl_raw(snapshot_dir: Path, table: str) -> dict:
+    """A PUDL EIA-860 raw file, which must come from the release today's pin names."""
+    return require_raw_url(raw_entry(snapshot_dir, f"raw:{table}"), pudl_url(table),
+                           "eia_860_861")
+
+
 def stamp_860(snapshot_dir: Path) -> dict:
     """The eia_860_861 stamp: pinned version, freshest retrieval of its two raw files."""
-    entries = [raw_entry(snapshot_dir, f"raw:{t}") for t in (PLANTS, GENERATORS)]
+    entries = [_pudl_raw(snapshot_dir, t) for t in (PLANTS, GENERATORS)]
     return {
         "source": "eia_860_861",
         "source_version": registry_pin("eia_860_861"),
@@ -106,8 +113,8 @@ def load_plants(snapshot_dir: Path) -> list[dict]:
     import duckdb
 
     _, year = pin_860()
-    plants = raw_entry(snapshot_dir, f"raw:{PLANTS}")["abspath"]
-    gens = raw_entry(snapshot_dir, f"raw:{GENERATORS}")["abspath"]
+    plants = _pudl_raw(snapshot_dir, PLANTS)["abspath"]
+    gens = _pudl_raw(snapshot_dir, GENERATORS)["abspath"]
     con = duckdb.connect()
     rows = con.execute(
         """

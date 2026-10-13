@@ -51,7 +51,11 @@ def check_reference_rule(scoring, input_identity: dict) -> None:
                          "scripts/derive_scoring_refs.py")
     coi = rule.get("coi_definition")
     used = (scoring.definitions or {}).get("cost_of_inaction", "rent_x_persistence")
-    if coi is not None and coi != used:
+    if coi is None:
+        raise ValueError("scoring reference_rule records no coi_definition, so the "
+                         "references cannot be tied to a cost_of_inaction definition; "
+                         "re-derive them with scripts/derive_scoring_refs.py")
+    if coi != used:
         raise ValueError(
             f"scoring references were derived with cost_of_inaction={coi}, but this "
             f"scoring uses {used}. Re-derive: python scripts/derive_scoring_refs.py "
