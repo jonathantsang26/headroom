@@ -24,6 +24,18 @@ DA_BC_URL = (
     "?path=%2F{year}%2F{month:02d}%2FDA-BC-MONTHLY-{year}{month:02d}.csv.zip"
 )
 MONTHS = range(1, 13)
+# SPP's per-flowgate DA congestion $ (sum over intervals of flow x shadow price) and
+# TCR funding by constraint (settled DA Collected; used only as a calibration total).
+CBC_URL = (
+    "https://portal.spp.org/file-browser-api/download/congestion-by-constraint"
+    "?path=%2F{year}%2FCongestion-Constraint-{year}{month:02d}.csv"
+)
+TCR_URL = (
+    "https://portal.spp.org/file-browser-api/download/monthly-funding-by-constraint"
+    "?path=%2F{year}%2FTCR-CONSTRAINT-{year}{month:02d}.csv"
+)
+CBC_COLUMNS = ("Date", "Constraint Name", "Monitored Facility", "Contingency Name", "Sum")
+TCR_COLUMNS = ("Constraint Name", "DA Collected", "Month")
 QUEUE_URL = "https://opsportal.spp.org/Studies/GenerateActiveCSV"
 QUEUE_RAW = "raw:spp_gi_active_queue"
 MAX_CSV_BYTES = 512 << 20  # uncompressed cap for the zipped DA-BC CSV
@@ -45,6 +57,7 @@ CONSTRAINT_FIELDS = [
 CONGESTION_FIELDS = [
     "constraint_id", "monthly_cost_musd", "hours_binding",
     "shadow_price_sum_usd_per_mw", "max_abs_shadow_price", "breached_hours", "period",
+    "months_binding", "rent_musd", "max_month_cost_musd", "rent_basis", "flags",
 ]
 PLANNING_FIELDS = ["constraint_id", "plan", "proposed_fix", "assigned_cost_musd"]
 QUEUE_FIELDS = [
@@ -103,6 +116,13 @@ def fetch(snapshot_dir: Path) -> dict:
         name = _bc_raw_name(year, month)
         entries[name] = common.record_raw(snapshot_dir, name, url, path)
         _bc_pin(path, year, month)
+    for kind, url_t in (("cbc", CBC_URL), ("tcr", TCR_URL)):
+        for month in MONTHS:
+            url = url_t.format(year=year, month=month)
+            name = _money_raw_name(kind, year, month)
+            path = common.download(url, raw / f"{name.split(':', 1)[1]}.csv", max_mb=20)
+            entries[name] = common.record_raw(snapshot_dir, name, url, path)
+    _money_pins(year)
     q_path = common.download(QUEUE_URL, raw / "gi_active_queue.csv", max_mb=20)
     entries[QUEUE_RAW] = common.record_raw(snapshot_dir, QUEUE_RAW, QUEUE_URL, q_path)
     _queue_pin(q_path.read_bytes().decode("utf-8-sig"))
@@ -130,7 +150,77 @@ def _read_bc(path: Path, year: int, month: int) -> list[dict]:
             raise ValueError(
                 f"SPP DA-BC {year}-{month:02d} file has an interval in another month: "
                 f"{r['Interval']}")
+        r["_month"] = month
     return rows
+
+
+def _money_raw_name(kind: str, year: int, month: int) -> str:
+    return f"raw:spp_{kind}_{year}{month:02d}"
+
+
+def _money_pins(year: int) -> tuple[str, str]:
+    return (common.require_pin("spp_congestion_by_constraint", f"spp_cbc_{year}"),
+            common.require_pin("spp_tcr_funding", f"spp_tcr_funding_{year}"))
+
+
+def _read_money(path: Path, columns: tuple[str, ...], label: str) -> list[dict]:
+    """A congestion-$ CSV (SPP writes headers with leading spaces)."""
+    text = path.read_bytes().decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(text, newline=""))
+    header = [h.strip() for h in next(reader)]
+    missing = [c for c in columns if c not in header]
+    if missing:
+        raise ValueError(f"SPP {label} CSV lacks columns {missing}")
+    return [dict(zip(header, (v.strip() for v in r))) for r in reader if any(r)]
+
+
+def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
+    """Observed DA congestion $ per flowgate from congestion-by-constraint, plus the
+    settled TCR DA Collected total as a calibration figure. Every month's rows must
+    carry that month; duplicate keys are removed (counted, conflicts counted)."""
+    per: dict[str, dict] = defaultdict(lambda: {"months": {}, "positive": 0, "mon": set()})
+    seen: dict[tuple, str] = {}
+    dupes = conflicts = 0
+    entries = {}
+    for month in MONTHS:
+        e = common.raw_entry(snapshot_dir, _money_raw_name("cbc", year, month))
+        entries[month] = e
+        for r in _read_money(e["abspath"], CBC_COLUMNS, "congestion-by-constraint"):
+            if r["Date"] != f"{year}{month:02d}":
+                raise ValueError(
+                    f"SPP congestion-by-constraint {year}-{month:02d} has a row for {r['Date']}")
+            key = (r["Date"], r["Constraint Name"], r["Contingency Name"])
+            if key in seen:
+                dupes += 1
+                conflicts += seen[key] != r["Sum"]
+                continue
+            seen[key] = r["Sum"]
+            cid = f"{r['Constraint Name']}|{r['Contingency Name']}"
+            usd = -float(r["Sum"])  # SPP posts congestion as a negative Sum
+            d = per[cid]
+            d["mon"].add(r["Monitored Facility"])
+            if usd < 0:
+                d["positive"] += 1  # a month of negative rent: flagged, never netted
+                continue
+            d["months"][month] = d["months"].get(month, 0.0) + usd
+    tcr_total = 0.0
+    tcr_entries = {}
+    for month in MONTHS:
+        e = common.raw_entry(snapshot_dir, _money_raw_name("tcr", year, month))
+        tcr_entries[month] = e
+        for r in _read_money(e["abspath"], TCR_COLUMNS, "TCR funding"):
+            if r["Month"] != f"{month:02d}/{year}":
+                raise ValueError(f"SPP TCR funding {year}-{month:02d} has a row for {r['Month']}")
+            tcr_total += float(r["DA Collected"])
+    cbc_version, tcr_version = _money_pins(year)
+    latest = lambda es: max(x["retrieved_at"] for x in es.values())
+    return {
+        "per": per, "dupes": dupes, "conflicts": conflicts, "tcr_total": tcr_total,
+        "cbc_stamp": {"source": "spp_congestion_by_constraint", "source_version": cbc_version,
+                      "retrieved_at": latest(entries)},
+        "tcr_stamp": {"source": "spp_tcr_funding", "source_version": tcr_version,
+                      "retrieved_at": latest(tcr_entries)},
+    }
 
 
 def _mode(counts: Counter) -> str:
@@ -192,7 +282,7 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
     total_abs = []
     acc: dict[str, dict] = defaultdict(lambda: {
         "hours": set(), "breached": set(), "abs": [], "mon": Counter(), "cf": Counter(),
-        "stype": Counter(), "cname": "",
+        "stype": Counter(), "cname": "", "months": set(),
     })
     for r in rows:
         name, cname, mon = r["Constraint Name"], r["Contingency Name"], r["Monitored Facility"]
@@ -210,6 +300,7 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         total_abs.append(sp)
         a = acc[f"{name}|{cname}"]
         a["hours"].add(hour)
+        a["months"].add(r["_month"])
         if r["State"] == "BREACHED":
             a["breached"].add(hour)
         a["abs"].append(sp)
@@ -218,22 +309,30 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         a["stype"][r["Constraint Type"]] += 1
         a["cname"] = cname
 
+    money = _congestion_dollars(snapshot_dir, year)
     constraints, congestion = [], []
     excluded = Counter()
     excl_hours = Counter()
     excl_abs: dict[str, list] = defaultdict(list)
+    excluded_ids: dict[str, list] = defaultdict(list)
     kinds = Counter()
     multi_mon, mixed, multi_cf, reversed_only, lines = [], 0, 0, 0, set()
-    blank_names = []
+    joined = mismatched = flagged = 0
+    joined_abs = 0.0
     for cid in sorted(acc):
         a = acc[cid]
         monitored = _mode(a["mon"])
         element = _element(monitored)
         mixed += len({_element(m) for m in a["mon"]}) > 1
-        if element in ("xfmr", "other"):
+        # A phase shifter's own angle limit: the device is itself a flow controller,
+        # so there is no GET to recommend and its congestion is not a GET opportunity.
+        if element == "blank" and "PHSHFT" in cid.split("|", 1)[0]:
+            element = "phase_shifter"
+        if element in ("other", "phase_shifter"):
             excluded[element] += 1
             excl_hours[element] += len(a["hours"])
             excl_abs[element].extend(a["abs"])
+            excluded_ids[element].append(cid)
             continue
         if len(a["mon"]) > 1:
             multi_mon.append(cid)
@@ -242,33 +341,54 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         kinds[element] += 1
         if element == "ln":
             lines.add(_line_key(monitored))
-        if element == "blank":
-            blank_names.append(cid)
         facility = _mode(a["cf"])
         to, kv = _contingency_parts(facility)
         constraints.append({
             "constraint_id": cid, "monitored_line": "", "contingency_line": "",
-            "ctype": "thermal" if element == "ln" else "interface",
+            "ctype": {"ln": "thermal", "xfmr": "transformer"}.get(element, "interface"),
             "monitored_facility": _facility_key(element, monitored, cid),
             "monitored_facility_as_reported": monitored, "contingency_facility": facility,
             "contingency_name": a["cname"], "spp_constraint_type": _mode(a["stype"]),
             "contingency_to": to, "contingency_kv": kv,
         })
-        congestion.append({
+        sp_sum = math.fsum(a["abs"])
+        row = {
             "constraint_id": cid, "monthly_cost_musd": "",
             "hours_binding": len(a["hours"]),
-            "shadow_price_sum_usd_per_mw": f"{round(math.fsum(a['abs']), 4):.4f}",
+            "shadow_price_sum_usd_per_mw": f"{round(sp_sum, 4):.4f}",
             "max_abs_shadow_price": f"{round(max(a['abs']), 4):.4f}",
             "breached_hours": len(a["breached"]), "period": str(year),
-        })
+            "months_binding": len(a["months"]), "rent_musd": "", "max_month_cost_musd": "",
+            "rent_basis": "", "flags": "",
+        }
+        d = money["per"].get(cid)
+        flags = []
+        if d is not None and d["mon"] and not _same_element(d["mon"], set(a["mon"])):
+            mismatched += 1  # a recycled id naming another element: never joined
+            flags.append("cbc_monitored_mismatch")
+        elif d is not None and d["months"]:
+            months = d["months"]
+            row["rent_musd"] = f"{math.fsum(months.values()) / 1e6:.6f}"
+            row["max_month_cost_musd"] = f"{max(months.values()) / 1e6:.6f}"
+            row["rent_basis"] = "spp_congestion_by_constraint"
+            joined += 1
+            joined_abs += sp_sum
+        if d is not None and d["positive"]:
+            flagged += 1
+            flags.append(f"cbc_negative_rent_months={d['positive']}")
+        row["flags"] = ";".join(flags)
+        congestion.append(row)
 
     total = math.fsum(total_abs)
+    kept_abs = math.fsum(math.fsum(acc[c["constraint_id"]]["abs"]) for c in constraints)
     n_base = sum(1 for c in constraints if c["contingency_name"] == "BASE")
-    xfmr_share = math.fsum(excl_abs["xfmr"]) / total if total else 0.0
+    share = lambda k: math.fsum(excl_abs[k]) / total if total else 0.0
     other = (
         f" Excluded {excluded['other']} flowgates with an unrecognized monitored-element "
         f"prefix ({excl_hours['other']} constraint-hours)." if excluded["other"] else ""
     )
+    cbc_total = math.fsum(
+        float(r["rent_musd"]) for r in congestion if r["rent_musd"]) * 1e6
     stamp = {"source": "spp_binding_constraints", "source_version": version,
              "retrieved_at": entry["retrieved_at"]}
     common.write_table(
@@ -278,14 +398,16 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             f"SPP DA binding constraints {year} from the twelve monthly archives "
             f"(DA-BC-MONTHLY; the yearly file omits rows): {len(acc)} flowgates "
             f"(Constraint Name|Contingency Name) in {len(rows)} hourly rows. Kept "
-            f"{len(constraints)}: {kinds['ln']} thermal (LN monitored element) and "
-            f"{kinds['multi'] + kinds['blank']} interface ({kinds['multi']} Multi-Element, "
-            f"{kinds['blank']} with a blank monitored element: {', '.join(blank_names) or 'none'}; "
-            "the blank ones are named as phase-shifter (PHSHFT_PS) constraints and are "
-            "classed interface per the table contract). Excluded "
-            f"{excluded['xfmr']} transformer (XFMR) flowgates: {excl_hours['xfmr']} "
-            f"constraint-hours, {xfmr_share:.1%} of total |shadow price| over all "
-            f"flowgates.{other} {len(lines)} distinct monitored lines (endpoint order "
+            f"{len(constraints)}: {kinds['ln']} thermal (LN monitored element), "
+            f"{kinds['xfmr']} transformer (XFMR) and {kinds['multi'] + kinds['blank']} "
+            f"interface ({kinds['multi']} Multi-Element, {kinds['blank']} other blank "
+            f"elements). Excluded {excluded['phase_shifter']} phase-shifter flowgates "
+            f"({', '.join(excluded_ids['phase_shifter']) or 'none'}; "
+            f"{excl_hours['phase_shifter']} constraint-hours, {share('phase_shifter'):.2%} "
+            "of |shadow price|): the binding limit is the phase shifter's own, and the "
+            f"device is itself a power-flow controller.{other} Kept flowgates carry "
+            f"{kept_abs / total if total else 0:.2%} of total |shadow price|. "
+            f"{len(lines)} distinct monitored lines (endpoint order "
             f"ignored). {len(multi_mon)} flowgates carry >1 monitored-facility spelling, "
             f"{reversed_only} of them only reversed endpoints ({', '.join(multi_mon) or 'none'}); "
             f"{multi_cf} carry >1 "
@@ -293,29 +415,52 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             f"(ties: first sorted). {mixed} flowgates mix element types (classed by the "
             "most frequent). monitored_facility is the corridor key: lines with endpoints "
             "sorted, multi-element interfaces suffixed with their constraint name; SPP's "
-            "spelling is kept in monitored_facility_as_reported. Monitored elements not resolved to public topology: "
-            "monitored_line and contingency_line are blank for every row (SPP names are "
-            "market-model bus names; the bus-location model is CEII); contingency_line is "
-            f"also inherently blank for the {n_base} BASE (no-contingency) flowgates."
+            "spelling is kept in monitored_facility_as_reported. Monitored elements not "
+            "resolved to public topology: monitored_line and contingency_line are blank for "
+            "every row (SPP names are market-model bus names; the bus-location model is "
+            f"CEII); contingency_line is also inherently blank for the {n_base} BASE "
+            "(no-contingency) flowgates."
         ),
     )
     common.write_table(
         snapshot_dir, "congestion", congestion, CONGESTION_FIELDS, **stamp,
         coverage="observed",
+        contributors=[money["cbc_stamp"], money["tcr_stamp"]],
+        column_sources={"rent_musd": money["cbc_stamp"],
+                        "max_month_cost_musd": money["cbc_stamp"]},
         note=(
             f"SPP Day-Ahead market only (no real-time), {year}, one row per constraints "
             "row. hours_binding = distinct UTC hours (GMTIntervalEnd) the flowgate was "
-            "BINDING or BREACHED; breached_hours counts BREACHED. Local Interval labels "
-            "repeat on the DST fall-back hour; those are distinct UTC hours with their own "
-            "shadow prices and are kept. Exact duplicate rows "
-            "(GMTIntervalEnd, Constraint Name, Monitored Facility, Contingency Name) "
-            f"removed: {dupes} ({conflicting} with differing values; first kept). "
-            "shadow_price_sum_usd_per_mw = sum of |shadow price| over those hours, in $/MW "
-            "(not $): SPP posts no $ congestion figure and the ratings needed for rent are "
-            "not public, so monthly_cost_musd is blank."
+            "BINDING or BREACHED; breached_hours counts BREACHED; months_binding counts "
+            "months with any binding hour. Local Interval labels repeat on the DST "
+            "fall-back hour; those are distinct UTC hours with their own shadow prices and "
+            "are kept. Exact duplicate rows (GMTIntervalEnd, Constraint Name, Monitored "
+            f"Facility, Contingency Name) removed: {dupes} ({conflicting} with differing "
+            "values; first kept). shadow_price_sum_usd_per_mw = sum of |shadow price| "
+            "over those hours ($/MW-yr: the value of 1 MW of relief, first order). "
+            "rent_musd = SPP's congestion by constraint (sum over intervals of flow x "
+            "shadow price; posted as a negative Sum), summed over the months it is "
+            "positive; months where SPP shows negative rent are counted in flags, never "
+            f"netted. Joined on Constraint Name|Contingency Name: {joined} of "
+            f"{len(congestion)} flowgates ({joined_abs / kept_abs if kept_abs else 0:.3%} "
+            f"of kept |shadow price|); {mismatched} not joined because the monitored "
+            f"element differs (recycled ids); {flagged} flagged with negative-rent months; "
+            f"the rest have no row and their rent is unobserved (blank). Duplicate "
+            f"congestion keys removed: {money['dupes']} ({money['conflicts']} conflicting). "
+            f"Calibration: congestion-by-constraint total on kept flowgates "
+            f"${cbc_total / 1e6:,.1f}M; SPP TCR funding by constraint, DA Collected over "
+            f"all constraints, ${money['tcr_total'] / 1e6:,.1f}M (settled; the two "
+            "products differ by definition and coverage)."
         ),
     )
     return entry
+
+
+def _same_element(cbc: set[str], dabc: set[str]) -> bool:
+    """Whether congestion-by-constraint names the same monitored element(s) as the
+    DA binding record (lines compare with endpoint order ignored)."""
+    norm = lambda m: f"LN {_line_key(m)}" if m.startswith("LN ") else m
+    return bool({norm(m) for m in cbc} & {norm(m) for m in dabc})
 
 
 def _planning(snapshot_dir: Path, bc_entry: dict) -> None:

@@ -139,10 +139,14 @@ def build_signals(
 
     # rent magnitude
     if co is not None:
-        signals["rent"] = store.add(
-            _scaled(co.rent_musd, refs["rent_ref_musd"], cid=cid, name="rent",
-                    inputs=[co.rent_musd.lineage_id])
-        )
+        if co.rent_musd is not None:
+            signals["rent"] = store.add(
+                _scaled(co.rent_musd, refs["rent_ref_musd"], cid=cid, name="rent",
+                        inputs=[co.rent_musd.lineage_id])
+            )
+        else:
+            unobserved("rent", "no observed congestion $ for this flowgate",
+                       [co.hours_binding.lineage_id])
         signals["persistence"] = store.add(
             _scaled(co.hours_binding, refs["persist_ref_hours"], cid=cid,
                     name="persistence", inputs=[co.hours_binding.lineage_id])
@@ -201,7 +205,10 @@ def build_signals(
         )
 
     # cost of inaction: rent x persistence fraction.
-    if co is not None:
+    if co is not None and co.rent_musd is None:
+        unobserved("cost_of_inaction", "no observed congestion $ for this flowgate",
+                   [co.hours_binding.lineage_id])
+    elif co is not None:
         coi_exp = co.rent_musd.expected * (co.hours_binding.expected / 8760.0)
         coi_lo = co.rent_musd.lo * (co.hours_binding.lo / 8760.0)
         coi_hi = co.rent_musd.hi * (co.hours_binding.hi / 8760.0)

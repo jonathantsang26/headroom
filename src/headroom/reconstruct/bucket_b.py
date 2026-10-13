@@ -60,6 +60,7 @@ def _constraints(bundle: IngestBundle, lines_by_id: dict[str, Line]) -> list[Con
             ctype=r["ctype"],
             monitored_facility=(r.get("monitored_facility") or "").strip() or mon,
             contingency_facility=(r.get("contingency_facility") or "").strip() or None,
+            contingency_name=(r.get("contingency_name") or "").strip() or None,
             coverage="observed" if resolved else "unobserved",
         ))
     return out

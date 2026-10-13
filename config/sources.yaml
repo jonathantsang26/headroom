@@ -88,6 +88,30 @@ sources:
       basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal."
       notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
+  - name: spp_congestion_by_constraint
+    bucket: b
+    tier: 1
+    kind: api
+    gives: "Monthly DA congestion $ per binding flowgate (sum over intervals of flow x shadow price)"
+    access: "SPP Portal file browser, congestion-by-constraint /<year>/Congestion-Constraint-<year><MM>.csv, anonymous (page marked public)"
+    source_version: "spp_cbc_2025"
+    compliance:
+      publishable: true
+      basis: "Monthly cost of congestion by binding constraint, posted publicly on the SPP Portal."
+      notes: "Observed rent for the rent signal and the EV model. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
+
+  - name: spp_tcr_funding
+    bucket: b
+    tier: 1
+    kind: api
+    gives: "Monthly TCR funding by constraint: settled DA Collected, TCR Payout, Funding"
+    access: "SPP Portal file browser, monthly-funding-by-constraint /<year>/TCR-CONSTRAINT-<year><MM>.csv, anonymous"
+    source_version: "spp_tcr_funding_2025"
+    compliance:
+      publishable: true
+      basis: "Monthly TCR funding by constraint, posted publicly on the SPP Portal."
+      notes: "Calibration total only (settled DA congestion); no per-flowgate values used. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
+
   - name: spp_fca
     bucket: b
     tier: 3
@@ -118,7 +142,7 @@ sources:
     kind: export
     gives: "Where developers seek headroom; assigned upgrade costs"
     access: "SPP OPS portal GI active queue CSV (opsportal.spp.org/Studies/GenerateActiveCSV)"
-    source_version: "spp_giq_2026-10-09"   # the CSV's "Last Updated On" date
+    source_version: "spp_giq_2026-10-12"   # the CSV's "Last Updated On" date
     compliance:
       publishable: true
       basis: "SPP publishes the interconnection queue."

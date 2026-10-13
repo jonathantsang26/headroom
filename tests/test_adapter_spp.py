@@ -22,6 +22,11 @@ BC_BYTES = {m: (FIX / f"da_bc_2025{m:02d}_sample.csv.zip").read_bytes() for m in
 Q_BYTES = (FIX / "gi_active_queue_sample.csv").read_bytes()
 BC_URL = {m: spp.DA_BC_URL.format(year=2025, month=m) for m in MONTHS}
 BC_RAW = {m: f"raw:spp_da_bc_2025{m:02d}" for m in MONTHS}
+CBC_BYTES = {m: (FIX / f"cbc_2025{m:02d}_sample.csv").read_bytes() for m in MONTHS}
+TCR_BYTES = {m: (FIX / f"tcr_2025{m:02d}_sample.csv").read_bytes() for m in MONTHS}
+CBC_URL = {m: spp.CBC_URL.format(year=2025, month=m) for m in MONTHS}
+TCR_URL = {m: spp.TCR_URL.format(year=2025, month=m) for m in MONTHS}
+MONEY_RAW = {f"raw:spp_{k}_2025{m:02d}" for k in ("cbc", "tcr") for m in MONTHS}
 TABLES = ("constraints", "congestion", "planning", "queue")
 
 
@@ -47,10 +52,12 @@ def served(monkeypatch):
     return served
 
 
-def _fetch(tmp_path, served, bc=BC_BYTES, queue=Q_BYTES):
+def _fetch(tmp_path, served, bc=BC_BYTES, queue=Q_BYTES, cbc=CBC_BYTES, tcr=TCR_BYTES):
     snap = tmp_path / "snap"
     update_manifest(snap, snapshot_date="2026-10-12")
     served.update({BC_URL[m]: bc[m] for m in MONTHS})
+    served.update({CBC_URL[m]: cbc[m] for m in MONTHS})
+    served.update({TCR_URL[m]: tcr[m] for m in MONTHS})
     served[spp.QUEUE_URL] = queue
     result = spp.fetch(snap)
     served.clear()  # normalize must not touch the network
@@ -105,18 +112,19 @@ def _sample_queue():
 def test_fetch_records_verbatim_raw_files(tmp_path, served):
     snap, result = _fetch(tmp_path, served)
     raw = _manifest(snap)["raw"]
-    assert set(raw) == {*BC_RAW.values(), spp.QUEUE_RAW}
+    assert set(raw) == {*BC_RAW.values(), *MONEY_RAW, spp.QUEUE_RAW}
     for m in MONTHS:
         assert raw[BC_RAW[m]]["url"] == BC_URL[m]
         assert raw[BC_RAW[m]]["sha256"] == hashlib.sha256(BC_BYTES[m]).hexdigest()
         assert (snap / raw[BC_RAW[m]]["path"]).read_bytes() == BC_BYTES[m]
     assert raw[spp.QUEUE_RAW]["url"] == spp.QUEUE_URL
     assert raw[spp.QUEUE_RAW]["sha256"] == hashlib.sha256(Q_BYTES).hexdigest()
-    assert result["bytes"] == sum(map(len, BC_BYTES.values())) + len(Q_BYTES)
+    assert result["bytes"] == (sum(map(len, BC_BYTES.values())) + len(Q_BYTES)
+                               + sum(map(len, CBC_BYTES.values())) + sum(map(len, TCR_BYTES.values())))
 
 
 def test_fetch_refuses_a_queue_update_that_is_not_pinned(tmp_path, served):
-    newer = Q_BYTES.replace(b"10/9/2026", b"10/16/2026", 1)
+    newer = Q_BYTES.replace(b"10/12/2026", b"10/16/2026", 1)
     with pytest.raises(RuntimeError, match="spp_giq_2026-10-16"):
         _fetch(tmp_path, served, queue=newer)
 
@@ -160,7 +168,7 @@ def test_normalize_refuses_pin_drift(snap, monkeypatch):
         spp.normalize(snap)
 
 
-def test_constraints_keep_lines_and_interfaces_and_exclude_transformers(snap):
+def test_constraints_score_lines_transformers_interfaces_and_exclude_phase_shifters(snap):
     spp.normalize(snap)
     rows = {r["constraint_id"]: r for r in _table(snap, "constraints")}
     sample = _sample_bc()
@@ -169,17 +177,21 @@ def test_constraints_keep_lines_and_interfaces_and_exclude_transformers(snap):
         by_cid.setdefault(_cid(r), []).append(r)
     xfmr = {c for c, rs in by_cid.items() if rs[0]["Monitored Facility"].startswith("XFMR")}
     assert {"HUGOPP4|BASE", "T2T2_H_XF@FTSMTH<17246>|17246"} <= xfmr
-    assert set(rows) == set(by_cid) - xfmr
+    shifters = {c for c in by_cid if "PHSHFT" in c}
+    assert shifters == {"SOONER_SONR_SONR_PHSHFT_PS|BASE"}
+    assert set(rows) == set(by_cid) - shifters
     for cid, r in rows.items():
         mon = by_cid[cid][0]["Monitored Facility"]
-        assert r["ctype"] == ("thermal" if mon.startswith("LN ") else "interface")
+        want = ("thermal" if mon.startswith("LN ") else
+                "transformer" if mon.startswith("XFMR") else "interface")
+        assert r["ctype"] == want
         assert r["monitored_line"] == "" and r["contingency_line"] == ""
     multi = rows["TMP800_29528|BASE"]
     assert multi["monitored_facility_as_reported"] == "Multi-Element Constraint"
     # distinct interfaces must not share one corridor key
     assert multi["monitored_facility"] == "Multi-Element Constraint TMP800_29528"
-    phase_shifter = rows["SOONER_SONR_SONR_PHSHFT_PS|BASE"]
-    assert phase_shifter["ctype"] == "interface" and phase_shifter["monitored_facility"] == ""
+    note = _manifest(snap)["tables"]["constraints"]["note"]
+    assert "Excluded 1 phase-shifter flowgates (SOONER_SONR_SONR_PHSHFT_PS|BASE" in note
 
     base = rows["FULTON_T_1961A_A_LN|BASE"]
     assert (base["contingency_facility"], base["contingency_name"]) == ("BASE", "BASE")
@@ -203,7 +215,7 @@ def test_constraints_keep_lines_and_interfaces_and_exclude_transformers(snap):
 
     entry = _manifest(snap)["tables"]["constraints"]
     assert entry["coverage"] == "partial"
-    assert f"Excluded {len(xfmr)} transformer (XFMR) flowgates" in entry["note"]
+    assert f"{len(xfmr)} transformer (XFMR)" in entry["note"]
     assert "not resolved to public topology" in entry["note"]
 
 
@@ -213,7 +225,7 @@ def test_congestion_matches_sums_computed_from_the_raw_rows(snap):
     assert set(rows) == {r["constraint_id"] for r in _table(snap, "constraints")}
     by_cid = {}
     for r in _sample_bc():
-        if not r["Monitored Facility"].startswith("XFMR"):
+        if "PHSHFT" not in r["Constraint Name"]:
             by_cid.setdefault(_cid(r), []).append(r)
     for cid, rs in by_cid.items():
         got = rows[cid]
@@ -226,7 +238,7 @@ def test_congestion_matches_sums_computed_from_the_raw_rows(snap):
     # Interval is hour-ending: 01/01/2026 00:00 is 2025's last hour and is kept.
     last_hour = [r for r in _sample_bc() if r["Interval"] == "01/01/2026 00:00:00"]
     assert last_hour
-    assert all(_cid(r) in rows for r in last_hour if not r["Monitored Facility"].startswith("XFMR"))
+    assert all(_cid(r) in rows for r in last_hour if "PHSHFT" not in r["Constraint Name"])
 
     # Every row of this flowgate is in the sample: its full-year 2025 DA record.
     assert (rows["TMP363_30990|18875"]["hours_binding"],
@@ -277,7 +289,7 @@ def test_queue_keeps_active_requests_and_maps_unambiguous_pois(snap):
     assert "\n" not in rows["GI-TC-2024-25"]["poi"]
 
     entry = _manifest(snap)["tables"]["queue"]
-    assert (entry["source_version"], entry["coverage"]) == ("spp_giq_2026-10-09", "partial")
+    assert (entry["source_version"], entry["coverage"]) == ("spp_giq_2026-10-12", "partial")
     assert entry["contributors"] == [
         {k: buses_entry[k] for k in ("source", "source_version", "retrieved_at")}
     ]
@@ -335,3 +347,91 @@ def test_active_rule(status, withdrawn, active):
 ])
 def test_poi_key_on_real_names(poi, key):
     assert spp.poi_key(poi) == key
+
+
+def _sample_cbc():
+    rows = []
+    for m in MONTHS:
+        text = CBC_BYTES[m].decode("utf-8")
+        rows += [{k.strip(): v.strip() for k, v in r.items()}
+                 for r in csv.DictReader(io.StringIO(text))]
+    return rows
+
+
+def test_rent_is_spp_congestion_dollars_joined_exactly_with_its_own_stamp(snap):
+    spp.normalize(snap)
+    rows = {r["constraint_id"]: r for r in _table(snap, "congestion")}
+    sample = _sample_cbc()
+    # expected, computed independently: dedupe (month, name, contingency), rent = -Sum,
+    # positive-Sum months flagged and left out
+    seen, want, negative = set(), {}, Counter()
+    for r in sample:
+        key = (r["Date"], r["Constraint Name"], r["Contingency Name"])
+        if key in seen:
+            continue
+        seen.add(key)
+        cid = f"{r['Constraint Name']}|{r['Contingency Name']}"
+        usd = -float(r["Sum"])
+        if usd < 0:
+            negative[cid] += 1
+            continue
+        want.setdefault(cid, []).append(usd)
+    assert len(seen) < len(sample)  # the sample carries a duplicate key
+    joined = {c: v for c, v in want.items() if c in rows}
+    assert joined
+    for cid, vals in joined.items():
+        got = rows[cid]
+        assert float(got["rent_musd"]) == pytest.approx(math.fsum(vals) / 1e6, abs=1e-6)
+        assert float(got["max_month_cost_musd"]) == pytest.approx(max(vals) / 1e6, abs=1e-6)
+        assert got["rent_basis"] == "spp_congestion_by_constraint"
+    for cid, row in rows.items():
+        if cid not in want:
+            assert row["rent_musd"] == "" and row["rent_basis"] == ""  # unobserved, not 0
+    # the one negative-rent month in the sample belongs to the excluded phase shifter
+    assert set(negative) == {"SOONER_SONR_SONR_PHSHFT_PS|BASE"}
+
+    entry = _manifest(snap)["tables"]["congestion"]
+    cbc = entry["column_sources"]["rent_musd"]
+    assert (cbc["source"], cbc["source_version"]) == ("spp_congestion_by_constraint", "spp_cbc_2025")
+    assert entry["column_sources"]["max_month_cost_musd"] == cbc
+    assert {c["source"] for c in entry["contributors"]} == {
+        "spp_congestion_by_constraint", "spp_tcr_funding"}
+    assert "Duplicate congestion keys removed: 1" in entry["note"]
+    assert "TCR funding by constraint, DA Collected" in entry["note"]
+    Snapshot(snap).require_tables(TABLES)
+
+
+def test_months_binding_counts_months_with_any_binding_hour(snap):
+    spp.normalize(snap)
+    rows = {r["constraint_id"]: r for r in _table(snap, "congestion")}
+    from datetime import datetime, timedelta
+    months = {}
+    for r in _sample_bc():
+        hour = datetime.strptime(r["Interval"], "%m/%d/%Y %H:%M:%S") - timedelta(hours=1)
+        months.setdefault(_cid(r), set()).add(hour.month)  # Interval is hour-ending
+    for cid, row in rows.items():
+        assert int(row["months_binding"]) == len(months[cid])
+
+
+def test_a_recycled_id_naming_another_element_is_not_joined(tmp_path, served):
+    text = CBC_BYTES[1].decode("utf-8")
+    lines = text.split("\n")
+    target = next(ln for ln in lines[1:] if ",70BS12WAGS34," in ln)
+    swapped = target.replace("LN 70_BLUF - SUB1214", "LN ELSEWHERE - NOWHERE")
+    cbc = {m: CBC_BYTES[m] for m in MONTHS}
+    for m in MONTHS:
+        cbc[m] = CBC_BYTES[m].decode("utf-8").replace(
+            "LN 70_BLUF - SUB1214", "LN ELSEWHERE - NOWHERE").encode("utf-8")
+    snap, _ = _fetch(tmp_path, served, cbc=cbc)
+    spp.normalize(snap)
+    rows = {r["constraint_id"]: r for r in _table(snap, "congestion")}
+    (cid,) = [c for c in rows if c.startswith("70BS12WAGS34|")]
+    assert rows[cid]["rent_musd"] == "" and "cbc_monitored_mismatch" in rows[cid]["flags"]
+    assert swapped != target
+
+
+def test_a_congestion_file_for_another_month_is_refused(tmp_path, served):
+    bad = CBC_BYTES[2].decode("utf-8").replace("\n202502,", "\n202503,", 1).encode("utf-8")
+    snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 2: bad})
+    with pytest.raises(ValueError, match="congestion-by-constraint 2025-02"):
+        spp.normalize(snap)

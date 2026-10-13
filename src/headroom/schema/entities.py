@@ -10,12 +10,13 @@ from pydantic import BaseModel, Field
 from headroom.provenance.envelope import Fact, Range
 
 Coverage = Literal["observed", "unobserved"]  # non-filer footprint -> "unobserved"
-ConstraintType = Literal["thermal", "loopflow", "interface"]
+ConstraintType = Literal["thermal", "loopflow", "interface", "transformer"]
 GET = Literal[
     "Dynamic Line Rating",
     "Topology Optimization",
     "Advanced Power Flow Control",
     "Combination",
+    "No cost-effective GET",  # EV ranking: expected cost exceeds expected relief
 ]
 
 
@@ -57,7 +58,16 @@ class Constraint(BaseModel):
     ctype: ConstraintType
     monitored_facility: str | None = None  # as named by the RTO
     contingency_facility: str | None = None
+    contingency_name: str | None = None  # "BASE" = binds with all elements in service
     coverage: Coverage = "observed"
+
+    @property
+    def base_case(self) -> bool | None:
+        """True when the flowgate binds with no contingency; None when unknown."""
+        name = self.contingency_name or self.contingency_facility
+        if name:
+            return name == "BASE"
+        return None if self.contingency_line is None else False
 
     @property
     def corridor(self) -> str:
@@ -68,8 +78,12 @@ class Constraint(BaseModel):
 class CongestionObs(BaseModel):
     constraint_id: str
     period: str
-    rent_musd: Range  # congestion rent, $M/yr
+    rent_musd: Range | None  # congestion rent, $M/yr; None = unobserved for this row
     hours_binding: Range
+    breached_hours: float | None = None  # DA hours over the limit; None = not recorded
+    months_binding: int | None = None
+    shadow_price_sum: float | None = None  # sum |SP| ($/MW-yr): value of 1 MW of relief
+    fact_ids: list[str] = Field(default_factory=list)  # the row's observed Facts
 
 
 class PlanningItem(BaseModel):

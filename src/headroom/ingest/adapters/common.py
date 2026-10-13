@@ -144,8 +144,11 @@ def write_table(
     coverage: str = "observed",
     note: str = "",
     contributors: list[dict] | None = None,
+    column_sources: dict[str, dict] | None = None,
 ) -> dict:
     """Write normalized/<table>.csv deterministically and stamp it in the manifest.
+    `column_sources` maps columns whose values come from another source to that
+    source's stamp (the loader stamps those values with it).
     Coverage says what the table can claim: `unobserved` means the data could not
     be obtained, never that it is zero."""
     if coverage not in COVERAGE_LEVELS:
@@ -172,6 +175,11 @@ def write_table(
     }
     if contributors:
         entry["contributors"] = contributors
+    if column_sources:
+        unknown = sorted(set(column_sources) - set(fieldnames))
+        if unknown:
+            raise ValueError(f"column_sources names columns not in {table}: {unknown}")
+        entry["column_sources"] = column_sources
     update_manifest(snapshot_dir, tables={table: entry})
     return entry
 

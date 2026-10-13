@@ -165,10 +165,12 @@ def _load_live(
     tables = {table: _parse_csv(content) for table, (_, content) in raw_tables.items()}
     stamps = {t: snap.stamp(t) for t in REQUIRED_TABLES}
     contributors = {t: snap.contributors(t) for t in REQUIRED_TABLES}
+    column_sources = {t: snap.column_sources(t) for t in REQUIRED_TABLES}
     coverage = {t: snap.coverage(t) for t in REQUIRED_TABLES}
     bundle = _envelope(
         region, store, tables, identity,
         stamps=stamps, contributors=contributors, coverage=coverage,
+        column_sources=column_sources,
     )
     bundle.table_stamps = stamps
     return bundle
@@ -210,7 +212,9 @@ def _envelope(
     stamps: dict[str, SourceStamp | None],
     contributors: dict[str, list[SourceStamp]],
     coverage: dict[str, dict],
+    column_sources: dict[str, dict[str, SourceStamp]] | None = None,
 ) -> IngestBundle:
+    column_sources = column_sources or {}
     # One Fact per table: its sha256, under the table's stamp (and one per
     # contributing source), so absence-derived values have lineage too.
     table_lineage: dict[str, list[str]] = {}
@@ -316,10 +320,19 @@ def _envelope(
     congestion = tables["congestion"]
     _unique(congestion, lambda r: r["constraint_id"], "congestion")
     for r in congestion:
+        prefix = f"obs:congestion:{r['constraint_id']}"
         r["_lineage"] = _row_facts(
-            store, stamps["congestion"], TABLE_PROVIDER["congestion"], r,
-            f"obs:congestion:{r['constraint_id']}",
-            ("monthly_cost_musd", "hours_binding", "shadow_price_sum_usd_per_mw"),
+            store, stamps["congestion"], TABLE_PROVIDER["congestion"], r, prefix,
+            ("monthly_cost_musd", "hours_binding", "shadow_price_sum_usd_per_mw",
+             "breached_hours", "months_binding"),
+            column_sources=column_sources.get("congestion", {}),
+        )
+        # observed $ (its own source when stamped by column) kept separately so a
+        # rent value cites only the facts it was computed from
+        r["_rent_lineage"] = _row_facts(
+            store, stamps["congestion"], TABLE_PROVIDER["congestion"], r, prefix,
+            ("rent_musd", "max_month_cost_musd"),
+            column_sources=column_sources.get("congestion", {}),
         )
 
     planning = tables["planning"]
@@ -365,15 +378,17 @@ def _envelope(
 
 
 def _row_facts(store: LineageStore, stamp: SourceStamp | None, provider: str,
-               row: dict, prefix: str, fields: tuple[str, ...]) -> list[str]:
+               row: dict, prefix: str, fields: tuple[str, ...], *,
+               column_sources: dict[str, SourceStamp] | None = None) -> list[str]:
     ids = []
     for name in fields:
         raw = _text(row, name)
         if not raw:
             continue
+        col = (column_sources or {}).get(name)
         ids.append(store.add(_leaf(
-            stamp, value=float(raw), provider=provider, as_reported=raw,
-            lineage_id=f"{prefix}:{name}",
+            col or stamp, value=float(raw), provider=col.source if col else provider,
+            as_reported=raw, lineage_id=f"{prefix}:{name}",
         )).lineage_id)
     return ids
 

@@ -101,7 +101,9 @@ def test_unplaced_monitored_element_is_unobserved_and_kept(tmp_path, monkeypatch
     assert s3.signal_coverage["demand_pressure"] == "unobserved"
     assert s3.signal_coverage["rent"] == "observed"
     assert result.bucket_b.screen_status["FLOWGATE_3"] == "unmapped_monitored"
-    assert "binding in DA market" in s3.get_basis
+    # no topology and no DA breach record: the rule says so instead of assuming heavy
+    assert "heavy=unobserved (no DA breach record)" in s3.get_basis
+    assert "contingency=N-1" in s3.get_basis
     assert all(by_id[c].signal_coverage["loading"] == "observed"
                for c in by_id if c != "FLOWGATE_3")
     assert result.quality_report["constraint_coverage"] == {"observed": 9, "unobserved": 1}

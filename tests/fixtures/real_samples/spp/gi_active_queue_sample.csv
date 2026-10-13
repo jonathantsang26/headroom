@@ -1,4 +1,4 @@
-"Last Updated On",10/9/2026,
+"Last Updated On",10/12/2026,
 Generation Interconnection Number,IFS Queue Number,Current Cluster,Cluster Group, Nearest Town or County,State,TO at POI,In-Service Date,Commercial Operation Date,Cessation Date,Original Generator Commercial Op Date,Capacity,MAX Summer MW,MAX Winter MW,Service Type,Requested Maximum Injection Capability (MW),Requested Network Resource Deliverability (MW),Nameplate Capacity,Generation Type,Fuel Type,Substation or Line,Request Received,Date Withdrawn,Status,JTIQ Participant,JTIQ Commitment,Cause of Delay
 "TI-18-0827","","RTOE Transitional Cluster","","Weld County","CO","TSGT","6/24/2022",,,,"145","145","145","ER/NR","0","0","0","Wind","Wind","Redtail 115  Substation","8/27/2018",,"IA FULLY EXECUTED/COMMERCIAL OPERATION","","",""
 "TI-17-0224","","RTOE Transitional Cluster","","Kit Carson/Cheyenne Counties","CO","TSGT","9/2/2020",,,,"104","104","104","ER/NR","0","0","0","Wind","Wind","Windtalker 230 Switching Station","2/24/2017",,"IA FULLY EXECUTED/COMMERCIAL OPERATION","","",""

@@ -98,6 +98,18 @@ class Snapshot:
             for i, c in enumerate(extra)
         ]
 
+    def column_sources(self, table: str) -> dict[str, SourceStamp]:
+        """Columns whose values come from a different source than the table's own
+        stamp (e.g. SPP congestion $ joined onto binding-constraint rows). Each maps
+        to a full stamp, validated like the primary one."""
+        cols = self._entry(table).get("column_sources", {})
+        if not isinstance(cols, dict):
+            raise ValueError(f"Snapshot table {table!r} column_sources must be an object")
+        return {
+            str(col): _parse_stamp(stamp, f"Snapshot table {table!r} column {col!r} source")
+            for col, stamp in cols.items()
+        }
+
     def coverage(self, table: str) -> dict:
         """Declared coverage of a table: observed (default), partial or unobserved,
         with the adapter's note. Unobserved never means zero."""
@@ -137,6 +149,7 @@ class Snapshot:
         for table in names:
             self.stamp(table)
             self.contributors(table)
+            self.column_sources(table)
             self.coverage(table)
             path = self.table_path(table)
             if not path.is_file():
@@ -160,6 +173,7 @@ class Snapshot:
         for table in names:
             self.stamp(table)
             self.contributors(table)
+            self.column_sources(table)
             self.coverage(table)
             path = self.table_path(table)
             if not path.is_file():

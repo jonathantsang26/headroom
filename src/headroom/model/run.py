@@ -75,7 +75,9 @@ class ModelResult:
 
 
 def _provenance(composite, bb: BucketBResult, cid: str, store: LineageStore) -> str:
-    bits = [f"rent={bb.congestion[cid].rent_musd.provider}" if cid in bb.congestion else "rent=none",
+    co = bb.congestion.get(cid)
+    bits = [f"rent={co.rent_musd.provider}" if co is not None and co.rent_musd is not None
+            else ("rent=unobserved" if co is not None else "rent=none"),
             f"loading={bb.screen_status.get(cid, 'ok')}"]
     if cid in bb.planning:
         bits.append(f"planning={bb.planning[cid].plan}")
@@ -117,8 +119,10 @@ def run_model(
         comp = composite_from_percentiles(cid, pcts[cid], signals, store)
         radial = radial_by_cid[cid]
         loading_observed = coverage_by_cid[cid]["loading"] == "observed"
+        co = bucket_b.congestion.get(cid)
+        breached = co.breached_hours if co is not None else None
         get = recommend_get(c, radial=bool(radial), signals=signals,
-                            loading_observed=loading_observed)
+                            loading_observed=loading_observed, breached_hours=breached)
         scores.append(
             Score(
                 constraint_id=cid,
@@ -129,7 +133,8 @@ def run_model(
                 recommended_get=get,
                 provenance=_provenance(comp, bucket_b, cid, store),
                 signal_coverage=coverage_by_cid[cid],
-                get_basis=get_basis(c, radial=radial, loading_observed=loading_observed),
+                get_basis=get_basis(c, radial=radial, loading_observed=loading_observed,
+                                    breached_hours=breached),
             )
         )
 

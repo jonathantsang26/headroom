@@ -44,7 +44,8 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dic
 
     status = Counter(bucket_b.screen_status.values())
     radial_unknown = sum(1 for s in model.scores if "radial=unknown" in s.get_basis)
-    market_heavy = sum(1 for s in model.scores if "binding in DA market" in s.get_basis)
+    market_heavy = sum(1 for s in model.scores if "heavy=DA breached" in s.get_basis
+                       or "heavy=unobserved" in s.get_basis)
     gaps = [f"{t}: {e['coverage']} — {e['note']}" for t, e in tables.items()
             if e["coverage"] != "observed"]
     if affected:
@@ -55,9 +56,10 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dic
         )
     if market_heavy:
         gaps.append(
-            f"recommended_get: for {market_heavy} flowgates the 'at limit' test uses DA "
-            f"binding instead of the DC screen; radial is unknown for {radial_unknown} "
-            "(treated as meshed)."
+            f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
+            "the element, so the GET rule uses market facts only (element type, BASE vs "
+            "N-1, DA breached hours); radial is unknown for "
+            f"{radial_unknown} (treated as meshed)."
         )
 
     return {
