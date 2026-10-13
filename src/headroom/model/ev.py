@@ -29,7 +29,8 @@ Per Monte Carlo draw, u, h and C are shared across flowgates (they are uncertain
 about the technology, not the element); applicability is drawn per element. Doing
 nothing is always an option (EV 0), so the best EV is never negative. The ranking
 metric is the best EV; p_top_k is the share of draws a flowgate is in the top k by
-best EV; the recommendation is the GET most often best (or none)."""
+best EV with a positive best EV (zero-EV ties never count); the recommendation is the
+GET most often best (or none)."""
 
 from __future__ import annotations
 
@@ -211,7 +212,10 @@ def run_ev(
             for j in range(len(options)):
                 best_counts[:, j] += (choice == j).sum(axis=1)
             idx = np.argpartition(best, n - k, axis=0)[n - k:, :]
-            np.add.at(top_hits, idx.ravel(), 1)
+            # a draw where the best option is doing nothing (EV 0) is never a top-k hit:
+            # otherwise zero-EV flowgates would enter the top k by tie-breaking alone
+            hit = np.take_along_axis(best, idx, axis=0) > 0
+            np.add.at(top_hits, idx[hit], 1)
 
     out_ev, out_p, out_best, out_rec, out_cand = {}, {}, {}, {}, {}
     for i, (c, co) in enumerate(scored):

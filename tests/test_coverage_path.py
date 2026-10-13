@@ -153,3 +153,26 @@ def test_missing_rating_is_estimated_imputed_and_traced_to_voltage(tmp_path, mon
     # FLOWGATE_3 monitors LINE_5: screened against the estimate, not "no rating"
     assert result.bucket_b.screen_status["FLOWGATE_3"] != "no_thermal_limit"
     assert est.lineage_id in result.store.get("loading:FLOWGATE_3").inputs
+
+
+@pytest.mark.parametrize("facility, branch", [
+    ("SPS:CARPENTR HITCH:345:3:12", True),       # two stations
+    ("GRDA CSWS:CATSAGR5: 161 138 2", False),    # one station, transformer windings
+    ("LN ATOKA - CENTRAL", True),
+    ("GEN:UNIT1:13", False),
+])
+def test_branch_outage_decides_whether_n1_implies_a_parallel_path(facility, branch):
+    from headroom.model.get_match import get_basis, recommend_get
+    from headroom.provenance.envelope import Range
+    from headroom.schema.entities import Constraint
+
+    c = Constraint(constraint_id="x", monitored_line=None, contingency_line=None,
+                   ctype="thermal", contingency_name="123", contingency_facility=facility)
+    assert c.branch_outage is branch
+    zero = Range(lo=0, expected=0, hi=0, basis="t", source="s", source_version="v", lineage_id="z")
+    sig = {"loading": zero, "persistence": zero, "rent": zero}
+    get = recommend_get(c, radial=False, signals=sig, loading_observed=False, breached_hours=0)
+    assert get == ("Advanced Power Flow Control" if branch else "Dynamic Line Rating")
+    basis = get_basis(c, radial=None, loading_observed=False, breached_hours=0, get=get)
+    assert "treated meshed" not in basis
+    assert ("branch outage" if branch else "not a branch") in basis

@@ -157,7 +157,7 @@ def run_model(
                 provenance=_provenance(comp, bucket_b, cid, store),
                 signal_coverage=coverage_by_cid[cid],
                 get_basis=get_basis(c, radial=radial, loading_observed=loading_observed,
-                                    breached_hours=breached),
+                                    breached_hours=breached, get=get),
             )
         )
 

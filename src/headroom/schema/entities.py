@@ -62,6 +62,21 @@ class Constraint(BaseModel):
     coverage: Coverage = "observed"
 
     @property
+    def branch_outage(self) -> bool | None:
+        """For an N-1 flowgate: whether the outaged element is a branch (line or
+        transformer). Only then does binding after it imply a shared loop, i.e. a
+        parallel path. None when not N-1."""
+        if self.base_case is not False:
+            return None
+        if self.contingency_line:
+            return True
+        f = (self.contingency_facility or "").strip()
+        if ":" in f:
+            parts = f.split(":")
+            return len(parts) > 1 and len(parts[1].split()) >= 2  # two stations, or STA XF id
+        return f.startswith(("LN", "DBL", "XF"))
+
+    @property
     def base_case(self) -> bool | None:
         """True when the flowgate binds with no contingency; None when unknown."""
         name = self.contingency_name or self.contingency_facility
