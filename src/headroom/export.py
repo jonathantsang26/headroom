@@ -184,13 +184,24 @@ def _json_bytes(obj) -> bytes:
     return json.dumps(obj, indent=2).encode("utf-8")
 
 
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _cell(value):
+    """Upstream text (constraint and facility names) is written so a spreadsheet
+    shows it rather than evaluating it as a formula."""
+    if isinstance(value, str) and value.startswith(_FORMULA_START):
+        return "'" + value
+    return value
+
+
 def _csv_bytes(rows: list[dict]) -> bytes:
     if not rows:
         return b""
     buf = io.StringIO(newline="")
     w = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
     w.writeheader()
-    w.writerows(rows)
+    w.writerows({k: _cell(v) for k, v in r.items()} for r in rows)
     return buf.getvalue().encode("utf-8")
 
 
@@ -269,13 +280,25 @@ def build_notice(result: PipelineResult, mode: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _inputs_retrieved_at(result: PipelineResult) -> datetime:
+    """The latest retrieval time among the input tables' stamps: a deterministic
+    timestamp for the manifest (fixtures keep the fixed default)."""
+    times = [n.retrieved_at for n in result.store.leaves()
+             if n.lineage_id.startswith("table:") and getattr(n, "retrieved_at", None)]
+    if result.region.synthetic or not times:
+        return DEFAULT_GENERATED_AT
+    return max(times)
+
+
 def deliver(
     result: PipelineResult,
     out_dir: str | Path,
     *,
-    generated_at: datetime = DEFAULT_GENERATED_AT,
+    generated_at: datetime | None = None,
 ) -> Delivery:
     out = Path(out_dir)
+    if generated_at is None:
+        generated_at = _inputs_retrieved_at(result)
     out.mkdir(parents=True, exist_ok=True)
 
     blocked = _gate_blocked(result)
@@ -311,6 +334,13 @@ def deliver(
         runtime=result.runtime,
         output_sha256=ranking_digest(result),
     )
+    manifest["generated_at_basis"] = (
+        "latest retrieval time of the input tables (deterministic, so a replay writes the "
+        "same manifest); not the wall-clock time of the run")
+    manifest["export_decision"] = {
+        "mode": mode, "blocked_scores": len(blocked), "blocked_tables": blocked_tables,
+        "blocked_sources": blocked_sources,
+    }
     manifest["shortlist_k"] = result.model.k
     manifest["n_constraints"] = result.model.n_constraints
     manifest["coverage"] = {

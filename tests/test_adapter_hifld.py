@@ -253,3 +253,29 @@ def test_normalize_is_deterministic(built, tmp_path):
     first = {t: (snap / "normalized" / f"{t}.csv").read_bytes() for t in ("hifld_lines", "buses")}
     hifld.normalize(snap)
     assert {t: (snap / "normalized" / f"{t}.csv").read_bytes() for t in first} == first
+
+
+def test_a_server_that_ignores_the_offset_cannot_page_forever(tmp_path, monkeypatch):
+    def stuck(request, timeout=None):  # always the first page, always "more to come"
+        url = request.full_url if hasattr(request, "full_url") else request
+        if url.startswith(f"{hifld.LAYER_URL}/query?") and "returnCountOnly" not in url:
+            body = {"type": "FeatureCollection", "features": FEATURES[:10],
+                    "properties": {"exceededTransferLimit": True}}
+            return Response(json.dumps(body).encode())
+        return serve(request, timeout)
+
+    monkeypatch.setattr("urllib.request.urlopen", stuck)
+    monkeypatch.setattr(common.urllib.request, "urlopen", stuck)
+    monkeypatch.setattr(hifld, "PAGE", 10)
+    with pytest.raises(RuntimeError, match="HIFLD paging passed"):
+        hifld.fetch(_snapshot(tmp_path))
+
+
+def test_raw_entries_cannot_point_outside_the_snapshot(tmp_path):
+    snap = _snapshot(tmp_path)
+    outside = tmp_path / "elsewhere.bin"
+    outside.write_bytes(b"x")
+    update_manifest(snap, raw={"raw:escape": {"path": "../elsewhere.bin",
+                                              "sha256": common.sha256_of(outside)}})
+    with pytest.raises(ValueError, match="leaves the snapshot"):
+        common.raw_entry(snap, "raw:escape")

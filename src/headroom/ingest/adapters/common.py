@@ -108,7 +108,10 @@ def raw_entry(snapshot_dir: Path, name: str) -> dict:
     entry = manifest.get("raw", {}).get(name)
     if not isinstance(entry, dict):
         raise KeyError(f"Raw input {name!r} was not fetched into {snapshot_dir}")
-    path = snapshot_dir / entry["path"]
+    rel = Path(entry["path"])
+    path = (snapshot_dir / rel).resolve()
+    if rel.is_absolute() or not path.is_relative_to(Path(snapshot_dir).resolve()):
+        raise ValueError(f"Raw input {name!r} path leaves the snapshot: {rel}")
     if sha256_of(path) != entry["sha256"]:
         raise ValueError(f"Raw input {name!r} does not match its recorded sha256")
     return {**entry, "abspath": path}

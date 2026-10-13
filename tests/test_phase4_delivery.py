@@ -106,3 +106,10 @@ def test_manifest_records_each_output_digest_and_leaves_no_temp_files(tmp_path):
     on_disk = json.loads(Path(d.paths["manifest"]).read_text())
     assert on_disk["outputs"] == outputs
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_csv_cells_cannot_start_a_spreadsheet_formula():
+    from headroom.export import _csv_bytes
+
+    text = _csv_bytes([{"name": "=HYPERLINK(\"x\")", "n": -1.5, "ok": "LN A - B"}]).decode()
+    assert "'=HYPERLINK" in text and ",-1.5," in text and "LN A - B" in text

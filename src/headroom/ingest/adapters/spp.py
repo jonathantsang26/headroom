@@ -137,7 +137,11 @@ def _read_bc(path: Path, year: int, month: int) -> list[dict]:
         info = z.getinfo(_bc_member(year, month))
         if info.file_size > MAX_CSV_BYTES:
             raise ValueError(f"{info.filename} is {info.file_size} bytes uncompressed")
-        text = z.read(info).decode("utf-8-sig")
+        with z.open(info) as fh:  # the header's size is a claim: cap what is read
+            data = fh.read(MAX_CSV_BYTES + 1)
+        if len(data) > MAX_CSV_BYTES:
+            raise ValueError(f"{info.filename} inflates past {MAX_CSV_BYTES} bytes")
+        text = data.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(text, newline=""))
     header = [h.strip() for h in next(reader)]
     missing = [c for c in BC_COLUMNS if c not in header]

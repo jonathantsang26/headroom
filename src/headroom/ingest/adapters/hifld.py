@@ -112,8 +112,14 @@ def fetch(snapshot_dir: Path) -> dict:
             _query(envelope, returnCountOnly="true", f="json"), Path(tmp) / "count.json", max_mb=1,
         )
         expected = _read_json(count_path).get("count")
+        if not isinstance(expected, int) or expected < 0:
+            raise RuntimeError(f"HIFLD count query returned {expected!r}")
+        max_pages = expected // PAGE + 2  # a server ignoring resultOffset cannot loop forever
         page = 0
         while True:
+            if page >= max_pages or len(features) > expected:
+                raise RuntimeError(f"HIFLD paging passed {len(features)} features over {page} "
+                                   f"pages; the count query said {expected}")
             url = _query(
                 envelope, resultOffset=str(len(features)), resultRecordCount=str(PAGE),
                 **feature_query,
