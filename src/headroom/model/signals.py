@@ -118,9 +118,12 @@ def build_signals(
     refs: dict,
     adjacency: dict[str, set[str]],
     store: LineageStore,
+    definitions: dict[str, str] | None = None,
 ) -> tuple[dict[str, Range], dict[str, str]]:
     """Signals and their per-signal coverage for one flowgate. `line` is None when
-    the monitored element is not on public topology."""
+    the monitored element is not on public topology. `definitions` selects signal
+    variants (e.g. cost_of_inaction: recurring_rent); the default is the original."""
+    definitions = definitions or {}
     cid = constraint.constraint_id
     co = bb.congestion.get(cid)
     loading = bb.loading[cid]
@@ -204,8 +207,18 @@ def build_signals(
             _const(0.0, cid=cid, name="planning", spread=0.05, inputs=absent("planning"))
         )
 
-    # cost of inaction: rent x persistence fraction.
-    if co is not None and co.rent_musd is None:
+    # cost of inaction: rent x persistence fraction, or (recurring_rent) the observed
+    # $ outside the largest month, which keeps binding hours from counting a third time
+    if co is not None and definitions.get("cost_of_inaction") == "recurring_rent":
+        if co.recurring_rent_musd is None:
+            unobserved("cost_of_inaction", "recurring rent needs monthly congestion $, not "
+                       "in this row", [co.hours_binding.lineage_id])
+        else:
+            signals["cost_of_inaction"] = store.add(
+                _scaled(co.recurring_rent_musd, refs["coi_ref_musd"], cid=cid,
+                        name="cost_of_inaction", inputs=[co.recurring_rent_musd.lineage_id])
+            )
+    elif co is not None and co.rent_musd is None:
         unobserved("cost_of_inaction", "no observed congestion $ for this flowgate",
                    [co.hours_binding.lineage_id])
     elif co is not None:

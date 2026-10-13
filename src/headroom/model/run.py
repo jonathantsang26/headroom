@@ -28,6 +28,7 @@ from headroom.schema.entities import Score
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_SCORING = _REPO_ROOT / "config" / "scoring.yaml"
 RANKINGS = ("composite", "ev")
+DEFINITIONS = {"cost_of_inaction": ("rent_x_persistence", "recurring_rent")}
 
 
 @dataclass
@@ -42,8 +43,12 @@ class ScoringConfig:
     ranking: str = "composite"
     get_priors: dict | None = None  # full priors content (model/ev.py), not a path
     reference_rule: dict | None = None  # how the references were derived (recorded)
+    definitions: dict[str, str] = field(default_factory=dict)  # signal variants
 
     def __post_init__(self) -> None:
+        for name, value in self.definitions.items():
+            if value not in DEFINITIONS.get(name, ()):
+                raise ValueError(f"unknown signal definition {name}: {value!r}")
         if self.ranking not in RANKINGS:
             raise ValueError(f"scoring ranking must be one of {RANKINGS}")
         if self.ranking == "ev" and not self.get_priors:
@@ -69,6 +74,7 @@ class ScoringConfig:
             ranking=raw.get("ranking", "composite"),
             get_priors=load_priors(_REPO_ROOT / priors) if priors else None,
             reference_rule=raw.get("reference_rule"),
+            definitions=dict(raw.get("definitions") or {}),
         )
 
     @classmethod
@@ -84,6 +90,7 @@ class ScoringConfig:
             ranking=scoring.get("ranking", "composite"),
             get_priors=scoring.get("get_priors"),
             reference_rule=scoring.get("reference_rule"),
+            definitions=dict(scoring.get("definitions") or {}),
         )
 
 
@@ -126,7 +133,7 @@ def run_model(
     for c in bucket_b.constraints:
         line = lines_by_id.get(c.monitored_line) if c.monitored_line else None
         signals_by_cid[c.constraint_id], coverage_by_cid[c.constraint_id] = build_signals(
-            c, line, bucket_b, cfg.references, adjacency, store
+            c, line, bucket_b, cfg.references, adjacency, store, cfg.definitions
         )
         radial_by_cid[c.constraint_id] = is_radial(line, degree) if line else None
 

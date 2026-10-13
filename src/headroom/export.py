@@ -54,6 +54,8 @@ def scoring_to_manifest(scoring) -> dict:
         out["get_priors_sha256"] = priors_sha256(scoring.get_priors)
     if scoring.reference_rule is not None:
         out["reference_rule"] = scoring.reference_rule
+    if scoring.definitions:
+        out["definitions"] = scoring.definitions
     return out
 
 

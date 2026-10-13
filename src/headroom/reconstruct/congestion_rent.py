@@ -98,11 +98,26 @@ def congestion_observations(
         )
         num = lambda k: float(r[k]) if (r.get(k) or "").strip() else None
         months = num("months_binding")
+        recurring = None
+        if observed and num("max_month_cost_musd") is not None:
+            v = float(observed) - num("max_month_cost_musd")
+            if v < -1e-9:
+                raise ValueError(f"recurring rent < 0 for {cid}: the largest month exceeds the year")
+            v = max(v, 0.0)
+            recurring = store.add(derived_range(
+                lo=FORWARD_BAND[0] * v, expected=v, hi=FORWARD_BAND[1] * v,
+                basis="Observed DA congestion $ outside the flowgate's largest month (annual "
+                "minus largest month), -40%/+50% forward band ($M/yr). 0 = all of the "
+                "year's congestion $ fell in one month.",
+                stage="reconstruct", provider=PROVIDER, lineage_id=f"recurring_rent:{cid}",
+                inputs=r.get("_rent_lineage") or lineage,
+            ))
         out[cid] = CongestionObs(
             constraint_id=cid,
             period=(r.get("period") or "").strip() or period,
             rent_musd=rent,
             hours_binding=hours_binding,
+            recurring_rent_musd=recurring,
             breached_hours=num("breached_hours"),
             months_binding=int(months) if months is not None else None,
             shadow_price_sum=num("shadow_price_sum_usd_per_mw"),

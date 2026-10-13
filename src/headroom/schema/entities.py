@@ -95,6 +95,8 @@ class CongestionObs(BaseModel):
     period: str
     rent_musd: Range | None  # congestion rent, $M/yr; None = unobserved for this row
     hours_binding: Range
+    # observed $ outside the flowgate's largest month ($M/yr); None = no monthly $
+    recurring_rent_musd: Range | None = None
     breached_hours: float | None = None  # DA hours over the limit; None = not recorded
     months_binding: int | None = None
     shadow_price_sum: float | None = None  # sum |SP| ($/MW-yr): value of 1 MW of relief
