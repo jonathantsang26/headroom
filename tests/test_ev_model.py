@@ -1,5 +1,5 @@
 """The expected-value GET layer (model/ev.py) on the committed subset of the real
-2026-10-12 SPP snapshot, with test-only priors (tests/fixtures/ev_priors_test.yaml)."""
+2026-10-13 SPP snapshot, with test-only priors (tests/fixtures/ev_priors_test.yaml)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from headroom.model.ev import NO_GET, SINGLE_GETS, evidence_class, priors_sha256
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
 
-SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-12"
+SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13"
 PRIORS = yaml.safe_load((Path(__file__).parent / "fixtures" / "ev_priors_test.yaml").read_text())
 
 
