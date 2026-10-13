@@ -70,6 +70,9 @@ class Snapshot:
             raise ValueError(f"Unsupported snapshot manifest schema_version in {mpath}")
         if not isinstance(self.manifest.get("tables"), dict):
             raise ValueError(f"Snapshot manifest must contain a tables object: {mpath}")
+        rev = self.manifest.get("revision")
+        if rev is not None and (type(rev) is not int or rev < 2):
+            raise ValueError(f"Snapshot manifest revision must be an integer >= 2: {mpath}")
         self.normalized = self.root / "normalized"
 
     def _entry(self, table: str) -> dict:
@@ -203,6 +206,7 @@ def update_manifest(
     tables: dict | None = None,
     raw: dict | None = None,
     snapshot_date: str | None = None,
+    revision: int | None = None,
 ) -> Path:
     """Create or merge entries into a snapshot's manifest (adapters call this)."""
     snapshot_dir.mkdir(parents=True, exist_ok=True)
@@ -213,6 +217,8 @@ def update_manifest(
         "tables": {},
         "raw": {},
     }
+    if revision is not None and not mpath.exists():
+        m["revision"] = revision  # the N-th build of snapshot_date (N >= 2)
     if tables:
         m["tables"].update(tables)
     if raw:

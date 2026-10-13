@@ -165,3 +165,42 @@ def test_activation_replaces_dangling_current(root):
     current.symlink_to("missing")
     assert builder.main(["--date", DAY, "--activate-only"]) == 0
     assert current.readlink() == Path(DAY)
+
+
+def test_same_day_rebuild_is_a_revision_and_never_touches_the_day(root, monkeypatch):
+    _set_adapter(monkeypatch)
+    assert builder.main(["--date", DAY]) == 0
+    first = (root / DAY / "snapshot_manifest.json").read_bytes()
+    assert builder.main(["--date", DAY, "--revision", "2"]) == 0
+    assert (root / f"{DAY}.r2" / "snapshot_manifest.json").is_file()
+    assert (root / "current").readlink() == Path(f"{DAY}.r2")
+    assert (root / DAY / "snapshot_manifest.json").read_bytes() == first
+    import json
+    assert json.loads((root / f"{DAY}.r2" / "snapshot_manifest.json").read_text())["revision"] == 2
+    assert not list(root.glob(f".{DAY}*"))
+
+
+def test_existing_day_names_the_next_free_revision(root, monkeypatch, capsys):
+    _set_adapter(monkeypatch)
+    _complete(root / DAY)
+    _complete(root / f"{DAY}.r2")
+    assert builder.main(["--date", DAY]) == 1
+    assert "--revision 3" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["1", "0", "x"])
+def test_invalid_revision_has_no_side_effects(root, value):
+    before = set(root.iterdir())
+    with pytest.raises(SystemExit) as exc:
+        builder.main(["--date", DAY, "--revision", value])
+    assert exc.value.code == 2
+    assert set(root.iterdir()) == before
+
+
+def test_no_activate_leaves_current(root, monkeypatch):
+    _set_adapter(monkeypatch)
+    assert builder.main(["--date", DAY, "--no-activate"]) == 0
+    assert (root / DAY).is_dir()
+    assert (root / "current").readlink() == Path("2026-09-22")
+    assert builder.main(["--date", DAY, "--activate-only"]) == 0
+    assert (root / "current").readlink() == Path(DAY)

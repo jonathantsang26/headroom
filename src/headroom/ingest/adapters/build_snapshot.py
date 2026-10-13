@@ -38,6 +38,28 @@ def _snapshot_date(value: str) -> str:
     return value
 
 
+def _revision(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Use an integer revision >= 2.") from exc
+    if n < 2:
+        raise argparse.ArgumentTypeError("Revision 1 is the bare date; use >= 2.")
+    return n
+
+
+def snapshot_name(day: str, revision: int | None) -> str:
+    """`YYYY-MM-DD` for a day's first build, `YYYY-MM-DD.rN` for its N-th (N >= 2)."""
+    return day if revision is None else f"{day}.r{revision}"
+
+
+def _next_free(day: str) -> int:
+    n = 2
+    while (SPP_ROOT / snapshot_name(day, n)).exists():
+        n += 1
+    return n
+
+
 def activate_snapshot(snapshot_dir: Path) -> None:
     """Verify a completed snapshot and atomically replace the current symlink."""
     snapshot_dir = Path(snapshot_dir)
@@ -59,12 +81,22 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--date", type=_snapshot_date, default=date.today().isoformat())
     ap.add_argument(
+        "--revision", type=_revision, default=None,
+        help="N-th build of the same day (N >= 2): snapshot YYYY-MM-DD.rN. Dated "
+             "snapshots are never rebuilt in place.",
+    )
+    ap.add_argument(
         "--activate-only", action="store_true",
         help="Validate and activate an existing dated snapshot without fetching.",
     )
+    ap.add_argument(
+        "--no-activate", action="store_true",
+        help="Build and validate, but leave `current` where it is.",
+    )
     args = ap.parse_args(argv)
 
-    snap = SPP_ROOT / args.date
+    name = snapshot_name(args.date, args.revision)
+    snap = SPP_ROOT / name
     if args.activate_only:
         try:
             activate_snapshot(snap)
@@ -77,15 +109,16 @@ def main(argv: list[str] | None = None) -> int:
     if snap.exists() or snap.is_symlink():
         print(
             f"[FAILED] {snap} already exists; snapshots are not overwritten. "
-            "Use --activate-only to validate and activate it.", file=sys.stderr,
+            "Use --activate-only to validate and activate it, or build the next "
+            f"revision: --revision {_next_free(args.date)}", file=sys.stderr,
         )
         return 1
 
     SPP_ROOT.mkdir(parents=True, exist_ok=True)
-    staged = Path(tempfile.mkdtemp(prefix=f".{args.date}-", dir=SPP_ROOT))
+    staged = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=SPP_ROOT))
     (staged / "raw").mkdir()
     (staged / "normalized").mkdir()
-    update_manifest(staged, snapshot_date=args.date)
+    update_manifest(staged, snapshot_date=args.date, revision=args.revision)
 
     install_ssl_opener()
     try:
@@ -99,13 +132,19 @@ def main(argv: list[str] | None = None) -> int:
         if snap.exists() or snap.is_symlink():
             raise FileExistsError(f"Snapshot already exists: {snap}")
         staged.rename(snap)
-        activate_snapshot(snap)
+        if not args.no_activate:
+            activate_snapshot(snap)
     except Exception as exc:
         retained = staged if staged.exists() else snap
         print(f"[FAILED] {exc}; retained at {retained}", file=sys.stderr)
         return 1
 
-    print(f"[current] -> {snap}")
+    if args.no_activate:
+        current = SPP_ROOT / "current"
+        target = current.readlink() if current.is_symlink() else None
+        print(f"[built] {snap} (current unchanged -> {target})")
+    else:
+        print(f"[current] -> {snap}")
     return 0
 
 
