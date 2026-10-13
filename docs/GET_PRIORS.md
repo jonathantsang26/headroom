@@ -1,11 +1,13 @@
 # GET expected-value priors for SPP flowgates
 
-Companion to `config/get_priors.yaml` (version `spp-get-priors-2026-10-13`, research revision 2 after an audit). The file passes `headroom.model.ev.load_priors`.
+Companion to `config/get_priors.yaml` (version `spp-get-priors-2026-10-13.2`; research revision 2 after an audit, plus the interface change below). The file passes `headroom.model.ev.load_priors`.
 
 **Since this research.** Two changes to the EV layer postdate it:
 
 - EV now uses forward rent, R_f × months_binding/12 × a backtest ratio draw, not the observed 2025 rent (docs/FORWARD_RENT.md).
-- `recommended_get` is now the GET with the highest expected net value if pursued, not the most frequent best option (the fragility noted in section 10, item 2).
+- EV values the decision a planner can make: learn which GETs apply, then deploy the applicable GET with the highest expected net value E[u]E[h]E[R] − E[C], or nothing. It no longer floors each draw at zero, which assumed the realized relief, haircut, cost and next year's rent were known in advance. `recommended_get` is the GET contributing most to that value (the fragility noted in section 10, item 2 is gone).
+- Interfaces: the relief-size proxy that section 4.4 and 6.3 folded into applicability is now a separate `relief_scale` (DLR 0.35, TO 0.5), and applicability for interfaces is the probability alone (DLR 0.30, was 0.10; TO 0.30, was 0.15). Folding a relief discount into the probability charged the cost only where the GET was drawn applicable, so it undercharged cost.
+- C_TO's lo and hi pair the extremes of system cost and the number of flowgates N (lo: low cost over high N; hi: high cost over low N). That is a joint-extreme envelope, which section 2 avoids for DLR and APFC; its ends are wider than comparable quantiles.
 
 The sensitivity table in section 9 was computed on point 2025 rent with a scratch re-implementation. The real run's sensitivity is in README Status.
 
@@ -35,7 +37,7 @@ EV for flowgate f and GET g is `EV_g = P(applicable | class) x u_g x h x R_f - C
 | line_radial (0, inert) | 0.40 | 0.00 | 0.00 |
 | transformer_base (80, 0.6%) | 0.00 | 0.15 | 0.15 |
 | transformer_n1 (299, 22.9%) | 0.00 | 0.20 | 0.30 |
-| interface (11, 4.8%) | 0.10 | 0.25 | 0.15 |
+| interface (11, 4.8%) | 0.30 (relief × 0.35) | 0.25 | 0.30 (relief × 0.5) |
 | loopflow (0, inert) | 0.30 | 0.35 | 0.30 |
 
 No 2025 SPP flowgate falls in line_radial or loopflow, so those values do not affect today's ranking. They are set only to make the file complete and defensible.

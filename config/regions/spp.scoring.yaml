@@ -60,6 +60,19 @@ forward_rent:
   cbc_raw_sha256: "83d4dd3dda66f7ee8850c6e44c4e1aa2fbefa97c740149c1f531b30ad077d139"
   n_flowgates_with_rent: 2072
   script: scripts/backtest_forward_rent.py
+  backtest:   # held-out capture of the top 5% (share of the best possible), overlap, leaders at $0
+    annual:
+      mean_capture: 0.6376
+      "H1->H2": {k: 65, capture: 0.5608, overlap: 0.3077, leaders_realizing_zero: 20}
+      "H2->H1": {k: 62, capture: 0.2944, overlap: 0.2903, leaders_realizing_zero: 21}
+      "odd->even": {k: 68, capture: 0.8548, overlap: 0.6618, leaders_realizing_zero: 6}
+      "even->odd": {k: 73, capture: 0.8402, overlap: 0.6849, leaders_realizing_zero: 5}
+    months_binding_share:
+      mean_capture: 0.6638
+      "H1->H2": {k: 65, capture: 0.5521, overlap: 0.3077, leaders_realizing_zero: 17}
+      "H2->H1": {k: 62, capture: 0.3521, overlap: 0.3226, leaders_realizing_zero: 9}
+      "odd->even": {k: 68, capture: 0.9002, overlap: 0.7353, leaders_realizing_zero: 1}
+      "even->odd": {k: 73, capture: 0.8509, overlap: 0.6849, leaders_realizing_zero: 0}
 
 stability:
   draws: 10000

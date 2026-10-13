@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         print()
         return 0
     have = (yaml.safe_load(args.check.read_text()) or {}).get("forward_rent") or {}
-    keys = ("predictor", "ratio_quantiles", "cbc_raw_sha256")
+    keys = ("predictor", "ratio_quantiles", "cbc_raw_sha256", "backtest")
     diffs = [f"forward_rent.{k}: file {have.get(k)} != derived {got[k]}"
              for k in keys if have.get(k) != got[k]]
     for line in diffs:

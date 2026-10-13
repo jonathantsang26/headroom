@@ -12,7 +12,7 @@
 # One shared haircut, drawn independently of u (ev.py schema). h.hi is set so every single GET keeps
 #   u.hi x h.hi <= 0.08 (to-35 cap); Combination can exceed it (see report s.7).
 # line_radial and loopflow have no flowgates in the 2025 SPP data: their values are inert today.
-version: "spp-get-priors-2026-10-13"
+version: "spp-get-priors-2026-10-13.2"
 haircut:
   lo: 0.10    # judgement: derived floor = to-29 RT production-cost savings ~3% (2-5%) of the initial RT rent of the relieved constraints (Brattle/NewGrid SPP MWG 2018 slide 21; n=4 hand-picked severe snapshots, units fixed) / all-case average flow relief 26-31% at fixed dispatch (slide 17; 17 focus constraints x 20 cases, not the 4 simulated) => ~0.10 (0.065-0.19); the ratio also folds in a rent-to-production-cost conversion (to-29 verifier); a floor for DA R_f, which is rarely breach-priced (54 of 135,820 binding hours breached: Headroom SPP 2025 congestion-by-constraint snapshot 2026-10-13.r2, breached_hours, my count)
   mode: 0.35  # judgement: h(u) shadow-price-decline argument (worked example, report s.3: unbinding margin uniform 0-0.10, u = 0.08 => h ~0.31 linear supply, ~0.60 step supply); margins are often < 0.10 (DOE SGDP 2014 printed p.44: +5% removes up to 60% of target-line rent; dlr-13, rent basis, not h); directional only: net/own rent 0.38 (Murphy et al. CIGRE 2018 Table 1 p.6; dlr-85, rent basis, spillover only); APC saving / rent REDUCTION 0.32-0.37 (EPRI 3002013930 2018 Table 3-7; apfc-9; vs base rent 589 M$ only ~0.06-0.12)
@@ -34,8 +34,10 @@ gets:
       line_radial: 0.40       # judgement: DLR needs no parallel path, but relief may move to the next series segment (DOE 2022 printed p.40; dlr-76); inert (no SPP radial class in 2025 data)
       transformer_base: 0.0   # line ratings and AAR do not apply to transformers not in series with a line (SPP Operational Ratings Methodology 2025 printed p.3; aar-32); DLR acts on conductors only (CIGRE-US 2021 p.3; aar-35)
       transformer_n1: 0.0     # as transformer_base (aar-32, aar-35); dynamic transformer rating is a different technology
-      interface: 0.10         # judgement: ~0.3 that a DLR-able conductor sets the multi-element limit (conductor only: aar-35; Exception for ambient-insensitive limits: aar-32; longer paths stability-limited: DOE DLR Report 2019 printed pp.23-24, dlr-3) x ~0.35 relief-size proxy, not a probability (one line's DLR lifts a multi-element limit only partly; u is shared across classes)
+      interface: 0.30         # judgement: ~0.3 that a DLR-able conductor sets the multi-element limit (conductor only: aar-35; Exception for ambient-insensitive limits: aar-32; longer paths stability-limited: DOE DLR Report 2019 printed pp.23-24, dlr-3); the smaller relief on a multi-element limit is relief_scale below
       loopflow: 0.30          # judgement: monitored element is a line, conductor-limited share as lines, discounted for externally driven binding; inert (no SPP loopflow class in 2025 data)
+    relief_scale:
+      interface: 0.35         # judgement: one line's DLR lifts a multi-element limit only partly (relief-size proxy; was folded into applicability before relief_scale existed)
   Advanced Power Flow Control:
     relief_share:
       lo: 0.03    # EPRI SPP HPILS planning cases needed ~1-13% flow relief, sized to need (EPRI 3002013930 2018 Table 4-1 PDF p.114; apfc-1; cherry-picked viable cases)
@@ -70,5 +72,7 @@ gets:
       line_radial: 0.0        # TO applies only to meshed grids (RMI 2024 p.15; syntheses-113, to-85)
       transformer_base: 0.15  # judgement: as line_base
       transformer_n1: 0.30    # as line_n1; SPP transformer (flo) constraints were solved: Hawthorn XF20 and Nashua T1 (to-3, to-84), Cimarron (NewGrid 2024 case 4, recomputed from SPP chart data; to-9, syntheses-57)
-      interface: 0.15         # judgement: ~0.3 applicability x ~0.5 relief-size proxy, not a probability (GB boundary relief 4.1-8.4% switching only, 3-12.3% with existing PSTs, under severe outages: NG NIA_NGET0169 via Brattle 2017 slide 12, to-20; syntheses-78; against single-element ~0.2-0.3: to-3)
+      interface: 0.30         # judgement: ~0.3 applicability (against single-element ~0.2-0.3: to-3); the smaller boundary relief is relief_scale below
       loopflow: 0.30          # judgement: external parallel flows on DARCLAANOFTS were relieved by switching (FERC AD10-12-011 2020 slide 15; to-4, syntheses-76); inert (no SPP loopflow class in 2025 data)
+    relief_scale:
+      interface: 0.5          # judgement: GB boundary relief 4.1-8.4% switching only, 3-12.3% with existing PSTs, under severe outages (NG NIA_NGET0169 via Brattle 2017 slide 12, to-20; syntheses-78) against u_TO mode 0.07 x coverage; relief-size proxy (was folded into applicability before relief_scale existed)
