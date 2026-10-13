@@ -63,8 +63,8 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
         if ev_ranked:
             gaps.append(
                 f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
-                f"the element. recommended_get is the EV layer's GET with the highest "
-                f"expected net value if pursued "
+                f"the element. recommended_get is the EV layer's GET that contributes most "
+                f"to the decision's expected value, or none if no GET is worth deploying "
                 f"(flowgates without observed rent keep the evidence rule); {rule}. Each "
                 "get_basis lists the GETs the evidence does not rule out."
             )
@@ -92,14 +92,19 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
             "forward_rent": ({k: ev["forward_rent"].get(k) for k in (
                 "predictor", "ratio_quantiles", "ratio_mean", "derived_from_snapshot",
                 "backtest")} if ev.get("forward_rent") else None),
-            "note": ("Per draw, each GET is applicable to the element or not (drawn from "
-                     "its evidence-class probability); the draw's best net value is "
-                     "max(0, relief share x haircut x observed rent - annualized cost) over "
-                     "the applicable GETs. ev_mean (the mean over draws) ranks under "
-                     "ranking: ev; ev lo/expected/hi are its p5/p50/p95; p_top_k is the "
-                     "share of draws in the top k with a positive value. Relief share, "
-                     "haircut, cost and applicability are cited judgement priors (config), "
-                     "not observations; the order of the shortlist rests on them."
+            "note": ("The decision valued: find out which GETs apply to the element "
+                     "(drawn per element from evidence-class probabilities), then deploy "
+                     "the applicable GET with the highest expected net value (expected "
+                     "relief share x haircut x rent - expected annualized cost), or none. "
+                     "It is made before the realized relief, haircut, cost and next year's "
+                     "rent are known. ev_mean, the expected value of that decision, ranks "
+                     "under ranking: ev. ev lo/expected/hi are the p5/p50/p95 of its "
+                     "realized value, which is negative when a deployment loses money. "
+                     "p_top_k is the share of draws in the top k with a positive realized "
+                     "value. recommended_get is the GET contributing most to ev_mean. Relief "
+                     "share, haircut, cost, applicability and relief scale are cited "
+                     "judgement priors (config), not observations; the order of the "
+                     "shortlist rests on them."
                      + (" Rent in each draw is forward rent: the 2025 observed rent x the "
                         "share of months the flowgate bound in x a ratio drawn from a "
                         "within-2025 held-out-months backtest (forward_rent). No cross-year "
