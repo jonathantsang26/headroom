@@ -41,10 +41,14 @@ def derive_references(rows: list[dict], *, q: float = 0.99,
 def check_reference_rule(scoring, input_identity: dict) -> None:
     """Fail closed when a region's references were derived from a different
     congestion table than the one this run reads."""
-    rule = scoring.reference_rule or {}
+    if scoring.reference_rule is None:
+        return  # references not derived by a rule (fixture defaults): nothing to tie
+    rule = scoring.reference_rule
     want = rule.get("congestion_sha256")
     if not want:
-        return
+        raise ValueError("scoring reference_rule records no congestion_sha256, so the "
+                         "references cannot be tied to an input; re-derive them with "
+                         "scripts/derive_scoring_refs.py")
     coi = rule.get("coi_definition")
     used = (scoring.definitions or {}).get("cost_of_inaction", "rent_x_persistence")
     if coi is not None and coi != used:

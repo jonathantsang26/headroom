@@ -64,6 +64,8 @@ def test_guard_refuses_references_from_another_congestion_table(monkeypatch):
     with pytest.raises(ValueError, match="derive_scoring_refs"):
         run_pipeline(region.name, scoring=wrong)
     check_reference_rule(replace(ok, reference_rule=None), {})  # no rule: no guard
+    with pytest.raises(ValueError, match="records no congestion_sha256"):
+        check_reference_rule(replace(ok, reference_rule={"derived_from_snapshot": "x"}), {})
 
 
 @pytest.mark.skipif(not LIVE.exists(), reason="the pinned live snapshot is not on this machine")
