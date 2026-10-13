@@ -85,7 +85,10 @@ Column semantics:
   element matches (ids are recycled), summed over months with positive rent; months
   with negative rent are counted in `flags`, never netted. No row means unobserved
   (blank), never zero. SPP's TCR funding by constraint (settled DA Collected) is read
-  for a calibration total in the note only.
+  for a calibration total in the note, and as a build tripwire: the build fails when a
+  month's congestion-by-constraint total is outside 0.8–2.0× that month's DA Collected
+  (2025 runs 1.17–1.48), or when flowgates holding more than 5% of kept |shadow price|
+  join no dollar row.
 - `planning`: header-only, `unobserved` unless a machine-readable ITP source is fetched.
 - `queue`: active GI requests (not withdrawn, not in commercial operation). `near_bus`
   set only on an unambiguous POI-name match to a bus name, else blank.

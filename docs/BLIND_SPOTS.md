@@ -54,6 +54,13 @@ and a widened band — flagged, never dropped.
   of the shortlist depends on them. Their content and sha256 are recorded in every run
   manifest. The value of relief is first order (u × rent): it ignores the network
   response beyond the haircut and assumes one deployment relieves one flowgate.
+- **One year of congestion is a weak forecast.** Within 2025, only about 30% of one
+  half-year's top 5% recur in the other half. The EV layer therefore uses forward rent,
+  2025 dollars × months-binding share × a backtest ratio draw (docs/FORWARD_RENT.md).
+  That model is calibrated within 2025 and not tested across years.
+- **Transformers are keyed by substation.** SPP's monitored text names the substation,
+  not the bank, so the transformers at one substation share a corridor row and their
+  GET applicability draws.
 - **GET applicability without topology.** Element locations are CEII, so the GET rule
   and the EV applicability classes see only element type, contingency and binding
   pattern. They do not see parallel paths, terminal limits or line length.
