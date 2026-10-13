@@ -447,3 +447,30 @@ def test_a_conflicting_congestion_duplicate_fails_the_build(tmp_path, served):
     snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 1: bad})
     with pytest.raises(ValueError, match="conflicting rows"):
         spp.normalize(snap)
+
+
+def test_a_truncated_congestion_month_trips_the_build(tmp_path, served):
+    """A header-only July file is a degraded source, not a month without congestion."""
+    header = CBC_BYTES[7].decode("utf-8").split("\n", 1)[0] + "\n"
+    snap, _ = _fetch(tmp_path, served, cbc={**CBC_BYTES, 7: header.encode("utf-8")})
+    with pytest.raises(ValueError, match="tripwires: 2025-07 congestion-by-constraint"):
+        spp.normalize(snap)
+
+
+def test_a_join_that_leaves_most_binding_value_without_dollars_trips_the_build(
+        tmp_path, served, monkeypatch):
+    monkeypatch.setattr(spp, "MONTH_CBC_TCR_RATIO", (0.0, float("inf")))  # isolate the join
+    def rekey(body):  # every contingency renamed: no row joins its flowgate
+        head, *rows = body.decode("utf-8").split("\n")
+        out = [head]
+        for row in rows:
+            cols = row.split(",")
+            if len(cols) == 6:
+                cols[4] = "X" + cols[4]
+            out.append(",".join(cols))
+        return "\n".join(out).encode("utf-8")
+
+    cbc = {m: rekey(CBC_BYTES[m]) for m in MONTHS}
+    snap, _ = _fetch(tmp_path, served, cbc=cbc)
+    with pytest.raises(ValueError, match=r"of kept \|shadow price\| joined"):
+        spp.normalize(snap)

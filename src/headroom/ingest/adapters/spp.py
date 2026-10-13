@@ -39,6 +39,11 @@ TCR_COLUMNS = ("Constraint Name", "DA Collected", "Month")
 QUEUE_URL = "https://opsportal.spp.org/Studies/GenerateActiveCSV"
 QUEUE_RAW = "raw:spp_gi_active_queue"
 MAX_CSV_BYTES = 512 << 20  # uncompressed cap for the zipped DA-BC CSV
+# Build tripwires on the congestion $ (a degraded file or join must not pass as data):
+# each month's congestion-by-constraint total over SPP's settled DA Collected (2025:
+# 1.17-1.48), and the share of kept |shadow price| whose flowgates joined a $ row.
+MONTH_CBC_TCR_RATIO = (0.8, 2.0)
+JOIN_FLOOR = 0.95
 
 BC_COLUMNS = (
     "Interval", "GMTIntervalEnd", "Constraint Name", "Constraint Type", "State",
@@ -186,6 +191,7 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
     seen: dict[tuple, str] = {}
     dupes = 0
     entries = {}
+    cbc_month: dict[int, float] = defaultdict(float)
     for month in MONTHS:
         e = common.raw_entry(snapshot_dir, _money_raw_name("cbc", year, month))
         entries[month] = e
@@ -210,7 +216,9 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
                 d["positive"] += 1  # a month of negative rent: flagged, never netted
                 continue
             d["months"][month] = d["months"].get(month, 0.0) + usd
+            cbc_month[month] += usd
     tcr_total = 0.0
+    tcr_month: dict[int, float] = defaultdict(float)
     tcr_entries = {}
     for month in MONTHS:
         e = common.raw_entry(snapshot_dir, _money_raw_name("tcr", year, month))
@@ -219,15 +227,36 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
             if r["Month"] != f"{month:02d}/{year}":
                 raise ValueError(f"SPP TCR funding {year}-{month:02d} has a row for {r['Month']}")
             tcr_total += float(r["DA Collected"])
+            tcr_month[month] += float(r["DA Collected"])
     cbc_version, tcr_version = _money_pins(year)
     latest = lambda es: max(x["retrieved_at"] for x in es.values())
     return {
         "per": per, "dupes": dupes, "tcr_total": tcr_total,
+        "cbc_month": dict(cbc_month), "tcr_month": dict(tcr_month),
         "cbc_stamp": {"source": "spp_congestion_by_constraint", "source_version": cbc_version,
                       "retrieved_at": latest(entries)},
         "tcr_stamp": {"source": "spp_tcr_funding", "source_version": tcr_version,
                       "retrieved_at": latest(tcr_entries)},
     }
+
+
+def _congestion_tripwires(money: dict, joined_share: float, year: int) -> None:
+    """Fail the build when the congestion $ look degraded rather than writing them as
+    observations: a month whose congestion-by-constraint total is far from SPP's
+    settled DA Collected (a truncated or re-keyed file), or a join that leaves much of
+    the binding value without $."""
+    lo, hi = MONTH_CBC_TCR_RATIO
+    bad = []
+    for month in MONTHS:
+        cbc, tcr = money["cbc_month"].get(month, 0.0), money["tcr_month"].get(month, 0.0)
+        if tcr > 0 and not lo <= cbc / tcr <= hi:
+            bad.append(f"{year}-{month:02d} congestion-by-constraint ${cbc / 1e6:,.1f}M is "
+                       f"{cbc / tcr:.2f}x DA Collected ${tcr / 1e6:,.1f}M")
+    if joined_share < JOIN_FLOOR:
+        bad.append(f"only {joined_share:.1%} of kept |shadow price| joined a $ row "
+                   f"(floor {JOIN_FLOOR:.0%})")
+    if bad:
+        raise ValueError("SPP congestion $ fail the build tripwires: " + "; ".join(bad))
 
 
 def _mode(counts: Counter) -> str:
@@ -434,6 +463,7 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         ),
     )
     unjoined = sum(1 for r in congestion if not r["rent_musd"])
+    _congestion_tripwires(money, joined_abs / kept_abs if kept_abs else 0.0, year)
     common.write_table(
         snapshot_dir, "congestion", congestion, CONGESTION_FIELDS, **stamp,
         coverage="partial" if unjoined else "observed",
