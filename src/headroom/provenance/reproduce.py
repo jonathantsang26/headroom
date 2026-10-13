@@ -47,6 +47,11 @@ def _scoring_from_manifest(recorded: dict) -> ScoringConfig:
         fraction = recorded["top_fraction"]
         if type(fraction) not in (float, int) or not 0 < fraction <= 1:
             raise ValueError("top_fraction must be between zero and one")
+        if "get_priors" in recorded:
+            from headroom.model.ev import priors_sha256
+
+            if priors_sha256(recorded["get_priors"]) != recorded.get("get_priors_sha256"):
+                raise ValueError("recorded GET priors do not match their sha256")
         scoring = ScoringConfig.from_manifest(recorded)
         # Each signal consumes RNG draws; JSON object order must not change that.
         scoring.weights = {name: weights[name] for name in order}

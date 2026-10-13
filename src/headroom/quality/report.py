@@ -62,6 +62,29 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dic
             f"{radial_unknown} (treated as meshed)."
         )
 
+    ev = model.extras.get("ev")
+    ev_section = None
+    if ev:
+        mix = Counter(s.recommended_get for s in model.scores) if ev["ranking"] == "ev" else {}
+        ev_section = {
+            "ranking": ev["ranking"],
+            "priors_version": ev["priors_version"],
+            "priors_sha256": ev["priors_sha256"],
+            "k": ev["k"],
+            "n_unobserved_rent": len(ev["unobserved"]),
+            "unobserved_rent": ev["unobserved"],
+            "recommended_get_mix": dict(mix),
+            "note": ("Best-GET expected net value = max(0, P(applicable) x relief share x "
+                     "haircut x observed rent - annualized cost). Relief share, haircut, "
+                     "cost and applicability are cited judgement priors (config), not "
+                     "observations; the order of the shortlist rests on them."),
+        }
+        if ev["unobserved"]:
+            gaps.append(
+                f"ev: {len(ev['unobserved'])} flowgates have no observed congestion $, so "
+                "their EV is not computed; they are listed, not ranked."
+            )
+
     return {
         "region": bundle.region.name,
         "synthetic": bundle.region.synthetic,
@@ -75,5 +98,6 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model) -> dic
         "signal_coverage": {k: dict(v) for k, v in per_signal.items()},
         "scores_affected": affected,
         "unobserved_weight_all": round(unobserved_weight, 6),
+        "ev": ev_section,
         "gaps": gaps,
     }

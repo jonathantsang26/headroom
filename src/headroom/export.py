@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from headroom.model.ev import priors_sha256
 from headroom.pipeline import PipelineResult
 from headroom.provenance.digests import ranking_digest
 from headroom.provenance.gate import PublishabilityError, assert_publishable
@@ -37,7 +38,7 @@ class Delivery:
 
 
 def scoring_to_manifest(scoring) -> dict:
-    return {
+    out = {
         "seed": scoring.seed,
         "draws": scoring.draws,
         "top_fraction": scoring.top_fraction,
@@ -45,6 +46,15 @@ def scoring_to_manifest(scoring) -> dict:
         "signal_order": list(scoring.weights),
         "references": scoring.references,
     }
+    # Recorded only when set, so composite-ranked manifests keep their earlier shape.
+    if scoring.ranking != "composite":
+        out["ranking"] = scoring.ranking
+    if scoring.get_priors is not None:
+        out["get_priors"] = scoring.get_priors
+        out["get_priors_sha256"] = priors_sha256(scoring.get_priors)
+    if scoring.reference_rule is not None:
+        out["reference_rule"] = scoring.reference_rule
+    return out
 
 
 def build_score_rows(result: PipelineResult) -> list[dict]:
@@ -71,8 +81,38 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
             row[f"sig_{name}"] = round(s.signals[name].expected, 4)
         for name in _SIGNAL_ORDER:
             row[f"cov_{name}"] = s.signal_coverage.get(name, "observed")
+        co = result.bucket_b.congestion.get(s.constraint_id)
+        rnd = lambda v, n=4: round(v, n) if v is not None else ""
+        # observed quantities, in their own units (what a planner reads first)
+        row.update({
+            "rent_musd": rnd(co.rent_musd.expected, 6) if co and co.rent_musd else "",
+            "value_of_1mw_relief_usd": rnd(co.shadow_price_sum, 2) if co else "",
+            "hours_binding": rnd(co.hours_binding.expected, 1) if co else "",
+            "breached_hours": rnd(co.breached_hours, 1) if co else "",
+            "months_binding": co.months_binding if co and co.months_binding is not None else "",
+        })
+        row.update({
+            "ev_lo_musd": rnd(s.ev.lo, 6) if s.ev else "",
+            "ev_expected_musd": rnd(s.ev.expected, 6) if s.ev else "",
+            "ev_hi_musd": rnd(s.ev.hi, 6) if s.ev else "",
+            "p_top_k_composite": rnd(s.p_top_k_composite) if s.p_top_k_composite is not None else "",
+            "get_rule": s.get_rule,
+            "get_evidence": s.get_evidence,
+            "get_candidates": ";".join(s.get_candidates),
+        })
+        for option in _GET_OPTIONS:
+            p = s.get_probabilities.get(option)
+            row[f"p_best_{_slug(option)}"] = round(p, 4) if p is not None else ""
         rows.append(row)
     return rows
+
+
+_GET_OPTIONS = ("No cost-effective GET", "Dynamic Line Rating", "Advanced Power Flow Control",
+                "Topology Optimization", "Combination")
+
+
+def _slug(name: str) -> str:
+    return "none" if name.startswith("No ") else "".join(w[0] for w in name.split()).lower()
 
 
 def _gate_blocked(result: PipelineResult) -> list[str]:

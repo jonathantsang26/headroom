@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from headroom.model.ev import load_priors, run_ev, validate_priors
 from headroom.model.get_match import get_basis, recommend_get
 from headroom.model.score import composite_from_percentiles
 from headroom.model.signals import (
@@ -24,7 +25,9 @@ from headroom.quality.bucket_a import BucketAResult
 from headroom.reconstruct.bucket_b import BucketBResult
 from headroom.schema.entities import Score
 
-_DEFAULT_SCORING = Path(__file__).resolve().parents[3] / "config" / "scoring.yaml"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_SCORING = _REPO_ROOT / "config" / "scoring.yaml"
+RANKINGS = ("composite", "ev")
 
 
 @dataclass
@@ -34,6 +37,19 @@ class ScoringConfig:
     draws: int
     top_fraction: float
     seed: int
+    # "composite": rank by the weighted signal composite (default, fixtures).
+    # "ev": rank by the expected net value of each flowgate's best GET.
+    ranking: str = "composite"
+    get_priors: dict | None = None  # full priors content (model/ev.py), not a path
+    reference_rule: dict | None = None  # how the references were derived (recorded)
+
+    def __post_init__(self) -> None:
+        if self.ranking not in RANKINGS:
+            raise ValueError(f"scoring ranking must be one of {RANKINGS}")
+        if self.ranking == "ev" and not self.get_priors:
+            raise ValueError("ranking: ev needs get_priors")
+        if self.get_priors is not None:
+            validate_priors(self.get_priors)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "ScoringConfig":
@@ -43,12 +59,16 @@ class ScoringConfig:
         if abs(total - 1.0) > 1e-6:
             raise ValueError(f"scoring weights must sum to 1.0, got {total}")
         s = raw["stability"]
+        priors = raw.get("get_priors")
         return cls(
             weights=w,
             references=raw["references"],
             draws=int(s["draws"]),
             top_fraction=float(s["top_fraction"]),
             seed=int(s["seed"]),
+            ranking=raw.get("ranking", "composite"),
+            get_priors=load_priors(_REPO_ROOT / priors) if priors else None,
+            reference_rule=raw.get("reference_rule"),
         )
 
     @classmethod
@@ -61,6 +81,9 @@ class ScoringConfig:
             draws=int(scoring["draws"]),
             top_fraction=float(scoring["top_fraction"]),
             seed=int(scoring["seed"]),
+            ranking=scoring.get("ranking", "composite"),
+            get_priors=scoring.get("get_priors"),
+            reference_rule=scoring.get("reference_rule"),
         )
 
 
@@ -138,21 +161,62 @@ def run_model(
             )
         )
 
-    # rank flowgates: stability first, then composite expected
-    scores.sort(key=lambda s: (s.p_top_k, s.composite.expected), reverse=True)
+    extras = {"radial": radial_by_cid}
+    if cfg.get_priors:
+        k = _apply_ev(scores, bucket_b, radial_by_cid, cfg, store, extras, k)
 
-    shortlist = _dedupe_to_corridors(scores)
+    # rank flowgates: stability first, then the ranking quantity
+    scores.sort(key=lambda s: (s.p_top_k, _rank_value(s, cfg.ranking)), reverse=True)
+
+    shortlist = _dedupe_to_corridors(scores, cfg.ranking)
     return ModelResult(
         scores=scores,
         shortlist=shortlist,
         k=k,
         config=cfg,
         n_constraints=len(scores),
-        extras={"radial": radial_by_cid},
+        extras=extras,
     )
 
 
-def _dedupe_to_corridors(scores: list[Score]) -> list[dict]:
+def _rank_value(s: Score, ranking: str) -> float:
+    if ranking == "ev":
+        return s.ev.expected if s.ev is not None else float("-inf")
+    return s.composite.expected
+
+
+def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: ScoringConfig,
+              store: LineageStore, extras: dict, k: int) -> int:
+    """Attach the EV layer; when the region ranks by EV, it also sets p_top_k and
+    the recommended GET (the evidence rule's choice stays in get_rule)."""
+    res = run_ev(bb.constraints, bb, radial_by_cid, cfg.get_priors, store,
+                 draws=cfg.draws, top_fraction=cfg.top_fraction, seed=cfg.seed)
+    for s in scores:
+        cid = s.constraint_id
+        s.get_rule = s.recommended_get
+        s.ev = res.ev.get(cid)
+        s.get_probabilities = res.p_best.get(cid, {})
+        s.get_candidates = res.candidates.get(cid, [])
+        s.get_evidence = res.evidence.get(cid, "")
+        if cfg.ranking != "ev":
+            continue
+        s.p_top_k_composite = s.p_top_k
+        s.p_top_k = res.p_top_k.get(cid, 0.0)
+        if cid in res.recommended:
+            best = res.recommended[cid]
+            s.recommended_get = best
+            s.get_basis += (f"; GET=EV best in {s.get_probabilities[best]:.0%} of draws "
+                            f"(priors {res.priors_version}, evidence {s.get_evidence})")
+        else:
+            s.get_basis += "; EV unobserved (no observed rent): GET from the evidence rule"
+    extras["ev"] = {
+        "ranking": cfg.ranking, "k": res.k, "unobserved": res.unobserved,
+        "priors_version": res.priors_version, "priors_sha256": res.priors_sha256,
+    }
+    return res.k if cfg.ranking == "ev" else k
+
+
+def _dedupe_to_corridors(scores: list[Score], ranking: str = "composite") -> list[dict]:
     """Footprint-dedup: many flowgates can sit on one physical line; the deployment
     unit is the corridor. Each corridor row reports BOTH roll-ups (Decision 4):"""
     by_corridor: dict[str, list[Score]] = {}
@@ -161,7 +225,7 @@ def _dedupe_to_corridors(scores: list[Score]) -> list[dict]:
 
     rows: list[dict] = []
     for corridor, members in by_corridor.items():
-        best = max(members, key=lambda s: (s.p_top_k, s.composite.expected))
+        best = max(members, key=lambda s: (s.p_top_k, _rank_value(s, ranking)))
         rows.append({
             "physical_corridor": corridor,
             "representative_flowgate": best.constraint_id,
@@ -180,5 +244,17 @@ def _dedupe_to_corridors(scores: list[Score]) -> list[dict]:
             "recommended_get": best.recommended_get,
             "provenance": best.provenance,
         })
-    rows.sort(key=lambda r: (r["p_top_k"], r["composite_expected"]), reverse=True)
+        if best.ev is not None or any(m.ev is not None for m in members):
+            evs = [m.ev for m in members if m.ev is not None]
+            rows[-1].update({
+                "ev_lo": best.ev.lo if best.ev else None,
+                "ev_expected": best.ev.expected if best.ev else None,
+                "ev_hi": best.ev.hi if best.ev else None,
+                # sum over flowgates double-counts a shared deployment: an upper bound
+                "sum_ev_expected": sum(e.expected for e in evs),
+                "get_probabilities": best.get_probabilities,
+            })
+    key = "ev_expected" if ranking == "ev" else "composite_expected"
+    rows.sort(key=lambda r: (r["p_top_k"], r.get(key) if r.get(key) is not None
+                             else float("-inf")), reverse=True)
     return rows

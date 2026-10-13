@@ -17,6 +17,7 @@ class RegionConfig:
     rto: str
     data_dir: Path
     synthetic: bool
+    scoring_path: Path | None = None  # region default; None -> config/scoring.yaml
 
 
 REGIONS: dict[str, RegionConfig] = {
@@ -34,6 +35,7 @@ REGIONS: dict[str, RegionConfig] = {
         rto="SPP",
         data_dir=_REPO_ROOT / "data" / "raw" / "spp" / "current",
         synthetic=False,
+        scoring_path=_REPO_ROOT / "config" / "regions" / "spp.scoring.yaml",
     ),
 }
 

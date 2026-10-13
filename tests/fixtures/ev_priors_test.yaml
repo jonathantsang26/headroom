@@ -1,0 +1,20 @@
+# TEST-ONLY GET priors: shapes and round numbers for exercising model/ev.py.
+# Not the priors a real run uses (config/get_priors.yaml); no source behind them.
+version: ev_priors_test
+haircut: {lo: 0.5, mode: 0.7, hi: 0.9}
+gets:
+  Dynamic Line Rating:
+    relief_share: {lo: 0.05, mode: 0.15, hi: 0.30}
+    annual_cost_musd: {lo: 0.02, mode: 0.05, hi: 0.10}
+    applicability: {line_base: 0.7, line_n1: 0.5, line_n1_episodic: 0.5, line_radial: 0.8,
+                    transformer_base: 0.0, transformer_n1: 0.0, interface: 0.0, loopflow: 0.0}
+  Advanced Power Flow Control:
+    relief_share: {lo: 0.05, mode: 0.10, hi: 0.20}
+    annual_cost_musd: {lo: 0.3, mode: 0.8, hi: 1.5}
+    applicability: {line_base: 0.3, line_n1: 0.7, line_n1_episodic: 0.6, line_radial: 0.0,
+                    transformer_base: 0.4, transformer_n1: 0.6, interface: 0.7, loopflow: 0.3}
+  Topology Optimization:
+    relief_share: {lo: 0.02, mode: 0.08, hi: 0.15}
+    annual_cost_musd: {lo: 0.01, mode: 0.03, hi: 0.08}
+    applicability: {line_base: 0.1, line_n1: 0.5, line_n1_episodic: 0.7, line_radial: 0.0,
+                    transformer_base: 0.1, transformer_n1: 0.5, interface: 0.4, loopflow: 0.8}

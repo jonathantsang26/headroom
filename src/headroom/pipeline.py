@@ -43,6 +43,10 @@ def run_pipeline(
 ) -> PipelineResult:
     store = LineageStore()
     registry = deepcopy(registry or load_registry())
+    if scoring is None and scoring_path is None:
+        from headroom.ingest.region import get_region
+
+        scoring_path = get_region(region_name).scoring_path  # region default, if any
     scoring = deepcopy(scoring or ScoringConfig.load(scoring_path))
     runtime = runtime_identity()
 
