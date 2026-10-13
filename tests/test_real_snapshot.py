@@ -64,6 +64,8 @@ def test_real_subset_clears_the_gate_and_reports_its_gaps(tmp_path, monkeypatch,
         assert s.signal_coverage["rent"] == want  # no congestion $ row: unobserved, not 0
         assert s.signal_coverage["loading"] == "unobserved"  # SPP elements are not placeable
         assert s.signal_coverage["planning"] == "unobserved"
+        data = s.provenance.split("data=")[1].split(";")[0].split(",")
+        assert "spp_itp" not in data and "absent=" in s.provenance  # ITP gave nothing
         if s.constraint_id in rent_rows:
             # observed rent cites only the congestion-by-constraint Fact, under its stamp
             rent = result.bucket_b.congestion[s.constraint_id].rent_musd

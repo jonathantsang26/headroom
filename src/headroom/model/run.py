@@ -104,15 +104,27 @@ class ModelResult:
     extras: dict = field(default_factory=dict)  # radial flags, get rationale, etc.
 
 
-def _provenance(composite, bb: BucketBResult, cid: str, store: LineageStore) -> str:
+def _provenance(composite, bb: BucketBResult, cid: str, store: LineageStore,
+                signals: dict | None = None, coverage: dict | None = None) -> str:
     co = bb.congestion.get(cid)
     bits = [f"rent={co.rent_musd.provider}" if co is not None and co.rent_musd is not None
             else ("rent=unobserved" if co is not None else "rent=none"),
             f"loading={bb.screen_status.get(cid, 'ok')}"]
     if cid in bb.planning:
         bits.append(f"planning={bb.planning[cid].plan}")
-    # the registered root sources this score's lineage actually reaches
-    bits.append("data=" + ",".join(sorted(store.source_closure(composite.lineage_id))))
+    # the registered root sources this score's lineage reaches: through observed
+    # signals ("data"), and only through unobserved ones ("absent": a table that was
+    # consulted and gave nothing for this flowgate)
+    if signals is not None and coverage is not None:
+        seen = set().union(*(store.source_closure(signals[n].lineage_id) for n in signals
+                             if coverage.get(n, "observed") == "observed"))
+        absent = set().union(*(store.source_closure(signals[n].lineage_id) for n in signals
+                               if coverage.get(n) == "unobserved")) - seen
+    else:
+        seen, absent = store.source_closure(composite.lineage_id), set()
+    bits.append("data=" + ",".join(sorted(seen)))
+    if absent:
+        bits.append("absent=" + ",".join(sorted(absent)))
     return "; ".join(bits)
 
 
@@ -161,7 +173,8 @@ def run_model(
                 composite=comp,
                 p_top_k=p_top[cid],
                 recommended_get=get,
-                provenance=_provenance(comp, bucket_b, cid, store),
+                provenance=_provenance(comp, bucket_b, cid, store, signals,
+                                       coverage_by_cid[cid]),
                 signal_coverage=coverage_by_cid[cid],
                 get_basis=get_basis(c, radial=radial, loading_observed=loading_observed,
                                     breached_hours=breached, get=get),
