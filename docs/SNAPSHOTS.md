@@ -67,7 +67,11 @@ and re-runs the normalizers with the current code. The manifest keeps the source
 `raw` entries unchanged and records `renormalized_from` (the source id and manifest
 sha256). A live run also requires every publishable stamp to equal today's pin in
 `config/sources.yaml`. After a re-pin, an older snapshot loads only at a commit with its
-pins. Re-normalizing does not help, because the raw files keep their versions. Use it when an adapter fix changes what a snapshot's tables or notes should
+pins. Re-normalizing does not help. The normalizers check each raw file against
+today's pin: SPP, HIFLD and queue versions are read from the bytes, and the PUDL files'
+URLs name their release. One exception: the HIFLD query envelope in
+`config/regions/spp.yaml` is not checked. A widened envelope re-normalizes old raw
+files without the features outside the old envelope. Use it when an adapter fix changes what a snapshot's tables or notes should
 say. `2026-10-13.r2` was built this way: its nine tables are byte-identical to
 `2026-10-13`. Only the congestion table's coverage (now `partial`, because 18
 flowgates have no posted dollars) and its note changed.
