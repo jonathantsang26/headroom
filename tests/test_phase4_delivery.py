@@ -129,3 +129,33 @@ def test_an_output_directory_holds_one_run(tmp_path):
     with pytest.raises(FileExistsError, match="different run"):
         deliver(b, tmp_path)
     assert deliver(b, tmp_path, overwrite=True).manifest["output_sha256"] != ""
+
+
+def test_overwrite_removes_the_previous_runs_files_under_either_mode(tmp_path):
+    from dataclasses import replace
+
+    from headroom.export import deliver
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    (tmp_path / "scores.parquet").write_bytes(b"stale shareable parquet")
+    (tmp_path / "shortlist.csv").write_text("stale")
+    run = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60))
+    deliver(run, tmp_path, overwrite=True)  # synthetic: INTERNAL names
+    assert not (tmp_path / "scores.parquet").exists()
+    assert not (tmp_path / "shortlist.csv").exists()
+    assert (tmp_path / "shortlist.INTERNAL.synthetic.csv").exists()
+
+
+def test_missing_numbers_are_null_so_columns_stay_numeric(tmp_path):
+    import json
+    from dataclasses import replace
+
+    from headroom.export import deliver
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    d = deliver(run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60)), tmp_path)
+    rows = json.loads(open(d.paths["scores_json"]).read())
+    assert all(r["ev_mean_musd"] is None for r in rows)  # no EV layer on the fixture
+    assert all(not isinstance(r["rent_musd"], str) for r in rows)

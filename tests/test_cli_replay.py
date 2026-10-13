@@ -109,3 +109,14 @@ def test_replay_command_rejects_nonpositive_reference(tmp_path, capsys, value):
     assert exc.value.code == 1
     assert "references must be positive" in capsys.readouterr().err
     assert not out.exists()
+
+
+def test_replay_refuses_to_write_over_the_run_it_verifies(tmp_path, capsys):
+    result = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=100))
+    original = deliver(result, tmp_path / "original")
+    before = (tmp_path / "original" / "shortlist.INTERNAL.synthetic.csv").read_bytes()
+    with pytest.raises(SystemExit) as exc:
+        main(["reproduce", "--manifest", original.paths["manifest"],
+              "--out", str(tmp_path / "original")])
+    assert exc.value.code == 1 and "choose another --out" in capsys.readouterr().err
+    assert (tmp_path / "original" / "shortlist.INTERNAL.synthetic.csv").read_bytes() == before

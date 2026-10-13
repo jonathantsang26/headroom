@@ -22,6 +22,9 @@ def _run(args) -> int:
 
 
 def _reproduce(args) -> int:
+    if Path(args.out).resolve() == Path(args.manifest).resolve().parent:
+        raise ValueError("replay into the directory of the run it verifies would replace "
+                         "that run's files before they are compared; choose another --out")
     recorded = json.loads(Path(args.manifest).read_text())
     result = reproduce_from_manifest(recorded, data_dir=args.data_dir)
     d = deliver(result, args.out, overwrite=args.overwrite)

@@ -88,28 +88,30 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
         for name in _SIGNAL_ORDER:
             row[f"cov_{name}"] = s.signal_coverage.get(name, "observed")
         co = result.bucket_b.congestion.get(s.constraint_id)
-        rnd = lambda v, n=4: round(v, n) if v is not None else ""
+        # a missing number is null (blank in the CSV), never "": a mixed column would
+        # make the Parquet and JSON readers type it as text
+        rnd = lambda v, n=4: round(v, n) if v is not None else None
         # observed quantities, in their own units (what a planner reads first)
         row.update({
-            "rent_musd": rnd(co.rent_musd.expected, 6) if co and co.rent_musd else "",
-            "value_of_1mw_relief_usd": rnd(co.shadow_price_sum, 2) if co else "",
-            "hours_binding": rnd(co.hours_binding.expected, 1) if co else "",
-            "breached_hours": rnd(co.breached_hours, 1) if co else "",
-            "months_binding": co.months_binding if co and co.months_binding is not None else "",
+            "rent_musd": rnd(co.rent_musd.expected, 6) if co and co.rent_musd else None,
+            "value_of_1mw_relief_usd": rnd(co.shadow_price_sum, 2) if co else None,
+            "hours_binding": rnd(co.hours_binding.expected, 1) if co else None,
+            "breached_hours": rnd(co.breached_hours, 1) if co else None,
+            "months_binding": co.months_binding if co else None,
         })
         row.update({
             "ev_mean_musd": rnd(s.ev_mean, 6),
-            "ev_lo_musd": rnd(s.ev.lo, 6) if s.ev else "",
-            "ev_expected_musd": rnd(s.ev.expected, 6) if s.ev else "",
-            "ev_hi_musd": rnd(s.ev.hi, 6) if s.ev else "",
-            "p_top_k_composite": rnd(s.p_top_k_composite) if s.p_top_k_composite is not None else "",
+            "ev_lo_musd": rnd(s.ev.lo, 6) if s.ev else None,
+            "ev_expected_musd": rnd(s.ev.expected, 6) if s.ev else None,
+            "ev_hi_musd": rnd(s.ev.hi, 6) if s.ev else None,
+            "p_top_k_composite": rnd(s.p_top_k_composite),
             "get_rule": s.get_rule,
             "get_evidence": s.get_evidence,
             "get_candidates": ";".join(s.get_candidates),
         })
         for option in _GET_OPTIONS:
             p = s.get_probabilities.get(option)
-            row[f"p_best_{_slug(option)}"] = round(p, 4) if p is not None else ""
+            row[f"p_best_{_slug(option)}"] = round(p, 4) if p is not None else None
         rows.append(row)
     return rows
 
@@ -312,6 +314,18 @@ def _refuse_other_run(out: Path, manifest: dict) -> None:
                 "directory or pass --overwrite")
 
 
+_ARTIFACTS = ("scores", "shortlist", "quality_report", "NOTICE", "run_manifest")
+
+
+def _remove_previous_run(out: Path) -> None:
+    """--overwrite replaces the run in `out`: its artifacts under either name
+    (shareable or .INTERNAL.synthetic) go, so no stale file outlives the new run."""
+    for stem in _ARTIFACTS:
+        for suffix in ("", ".INTERNAL.synthetic"):
+            for ext in (".json", ".csv", ".parquet", ".md"):
+                (out / f"{stem}{suffix}{ext}").unlink(missing_ok=True)
+
+
 def deliver(
     result: PipelineResult,
     out_dir: str | Path,
@@ -384,6 +398,8 @@ def deliver(
     _json_bytes(manifest)
     if not overwrite:
         _refuse_other_run(out, manifest)
+    else:
+        _remove_previous_run(out)
     names = {"scores_json": rows_json, "shortlist_json": shortlist_json, "csv": csv_path,
              "quality_report": quality_path, "notice": notice_path, "parquet": parquet_path}
     outputs = {key: _atomic_write(names[key], data) for key, data in blobs.items()}

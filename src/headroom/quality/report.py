@@ -77,7 +77,9 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
 
     ev_section = None
     if ev:
-        mix = Counter(s.recommended_get for s in model.scores) if ev_ranked else {}
+        # the EV layer's choices only: flowgates without observed rent keep the rule's
+        mix = (Counter(s.recommended_get for s in model.scores if s.ev is not None)
+               if ev_ranked else {})
         ev_section = {
             "ranking": ev["ranking"],
             "priors_version": ev["priors_version"],
