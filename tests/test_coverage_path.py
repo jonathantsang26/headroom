@@ -176,3 +176,47 @@ def test_branch_outage_decides_whether_n1_implies_a_parallel_path(facility, bran
     basis = get_basis(c, radial=None, loading_observed=False, breached_hours=0, get=get)
     assert "treated meshed" not in basis
     assert ("branch outage" if branch else "not a branch") in basis
+
+
+def _shadow_price_congestion(d: Path, *, with_rent_column: bool):
+    """Rewrite the fixture congestion table in the live SPP shape: no monthly $,
+    summed |shadow price| instead; optionally an observed-$ column, blank for one row."""
+    rows = list(csv.DictReader((d / "congestion.csv").open()))
+    fields = ["constraint_id", "monthly_cost_musd", "hours_binding",
+              "shadow_price_sum_usd_per_mw"] + (["rent_musd"] if with_rent_column else [])
+    out = []
+    for i, r in enumerate(rows):
+        row = {"constraint_id": r["constraint_id"], "monthly_cost_musd": "",
+               "hours_binding": r["hours_binding"],
+               "shadow_price_sum_usd_per_mw": f"{float(r['monthly_cost_musd']) * 1e5:.1f}"}
+        if with_rent_column:
+            row["rent_musd"] = "" if i == 0 else f"{float(r['monthly_cost_musd']) * 12:.3f}"
+        out.append(row)
+    with (d / "congestion.csv").open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields)
+        w.writeheader()
+        w.writerows(out)
+
+
+def test_snapshot_without_observed_dollars_uses_the_stated_rating_band(tmp_path, monkeypatch):
+    region = _snapshot(tmp_path, monkeypatch,
+                       edit=lambda d: _shadow_price_congestion(d, with_rent_column=False))
+    result = run_pipeline(region)
+    for co in result.bucket_b.congestion.values():
+        assert "unobserved rating" in co.rent_musd.basis and "100-1200 MW" in co.rent_musd.basis
+    assert all(s.signal_coverage["rent"] == "observed" for s in result.model.scores)
+
+
+def test_a_blank_observed_dollar_is_unobserved_never_the_band(tmp_path, monkeypatch):
+    region = _snapshot(tmp_path, monkeypatch,
+                       edit=lambda d: _shadow_price_congestion(d, with_rent_column=True))
+    result = run_pipeline(region)
+    first = next(iter(result.bucket_b.congestion))
+    co = result.bucket_b.congestion[first]
+    assert co.rent_musd is None
+    score = {s.constraint_id: s for s in result.model.scores}[first]
+    assert score.signal_coverage["rent"] == "unobserved"
+    assert score.signal_coverage["cost_of_inaction"] == "unobserved"
+    for cid, other in result.bucket_b.congestion.items():
+        if cid != first:
+            assert other.rent_musd is not None and "Observed DA congestion" in other.rent_musd.basis
