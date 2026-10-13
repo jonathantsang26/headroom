@@ -210,8 +210,10 @@ def _rank_key(s: Score, ranking: str) -> tuple:
     P(some GET applies to the element), one value per evidence class, so ordering by
     it first would sort them by sampling noise (model/ev.py)."""
     if ranking == "ev":
+        # flowgates with no GET worth deploying tie at 0: order them by the composite
+        # (how severe their congestion is), not by input order
         mean = s.ev_mean if s.ev_mean is not None else float("-inf")
-        return (mean, s.p_top_k)
+        return (mean, s.p_top_k, s.composite.expected)
     return (s.p_top_k, s.composite.expected)
 
 
@@ -249,6 +251,7 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         "ranking": cfg.ranking, "k": res.k, "unobserved": res.unobserved,
         "priors_version": res.priors_version, "priors_sha256": res.priors_sha256,
         "forward_rent": cfg.forward_rent,
+        "n_positive": sum(1 for v in res.ev_mean.values() if v > 0),
     }
     return res.k if cfg.ranking == "ev" else k
 
@@ -295,7 +298,8 @@ def _dedupe_to_corridors(scores: list[Score], ranking: str = "composite") -> lis
             })
     if ranking == "ev":
         rows.sort(key=lambda r: (r["ev_mean"] if r.get("ev_mean") is not None
-                                 else float("-inf"), r["p_top_k"]), reverse=True)
+                                 else float("-inf"), r["p_top_k"], r["composite_expected"]),
+                  reverse=True)
     else:
         rows.sort(key=lambda r: (r["p_top_k"], r["composite_expected"]), reverse=True)
     return rows

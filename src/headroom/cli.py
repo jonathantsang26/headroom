@@ -46,7 +46,10 @@ def _report(result, d) -> int:
         )
     print(f"  {m.n_constraints} flowgates, {len(m.shortlist)} corridors, shortlist k={m.k}")
     ev_ranked = m.config.ranking == "ev"
-    print("  top corridors" + (" (by mean best-GET net value, $M/yr):" if ev_ranked else ":"))
+    if ev_ranked and "ev" in m.extras:
+        print(f"  {m.extras['ev'].get('n_positive')} flowgates have a GET worth deploying")
+    print("  top corridors" + (" (by the expected net value of the GET decision, $M/yr):"
+                               if ev_ranked else ":"))
     for i, c in enumerate(m.shortlist[:10], start=1):
         if ev_ranked and c.get("ev_mean") is not None:
             value = (f"EV={c['ev_mean']:.2f} p50 {c['ev_expected']:.2f} "

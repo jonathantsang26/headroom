@@ -76,8 +76,9 @@ def test_ev_ranks_the_real_subset_and_stays_shareable(region, tmp_path):
         assert closure <= {"spp_binding_constraints", "spp_congestion_by_constraint"}
         assert "cited assumptions" in s.ev.basis
     # ranked by the mean best-GET value, then EV rank stability
-    keys = [(s.ev_mean if s.ev_mean is not None else float("-inf"), s.p_top_k) for s in scores]
-    assert keys == sorted(keys, reverse=True)
+    keys = [(s.ev_mean if s.ev_mean is not None else float("-inf"), s.p_top_k,
+             s.composite.expected) for s in scores]
+    assert keys == sorted(keys, reverse=True)  # zero-value ties go by the composite
     # p_top_k is the EV layer's, not the composite's
     assert any(s.p_top_k != s.p_top_k_composite for s in ranked)
     rows = result.model.shortlist
