@@ -10,6 +10,7 @@ from pathlib import Path
 from headroom.ingest import ingest_region
 from headroom.ingest.region import RegionConfig
 from headroom.model import ModelResult, ScoringConfig, run_model
+from headroom.model.references import check_reference_rule
 from headroom.provenance.lineage import LineageStore
 from headroom.provenance.runtime import runtime_identity
 from headroom.quality import BucketAResult, run_bucket_a
@@ -53,6 +54,7 @@ def run_pipeline(
     bundle = ingest_region(
         region_name, store, data_dir=data_dir, expected_inputs=expected_inputs,
     )
+    check_reference_rule(scoring, bundle.input_identity)
     bucket_a = run_bucket_a(bundle, store)
     bucket_b = run_bucket_b(bundle, bucket_a, store)
     model = run_model(bucket_a, bucket_b, store, scoring)
