@@ -63,7 +63,8 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
         if ev_ranked:
             gaps.append(
                 f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
-                f"the element. recommended_get is the EV layer's most frequent best option "
+                f"the element. recommended_get is the EV layer's GET with the highest "
+                f"expected net value if pursued "
                 f"(flowgates without observed rent keep the evidence rule); {rule}. Each "
                 "get_basis lists the GETs the evidence does not rule out."
             )

@@ -44,8 +44,10 @@ depends on the producer:
 - `composite_lo/expected/hi`: the weighted signal composite. Under `ranking: ev` it is
   a diagnostic, and `p_top_k_composite` gives its rank stability.
 - `recommended_get`:
-  - Under `ranking: ev`, the option with the highest net value in the most draws,
-    which can be `No cost-effective GET`.
+  - Under `ranking: ev`, the GET with the highest expected net value if pursued:
+    the mean over draws of max(0, its net value), counted as 0 where it does not apply.
+    `No cost-effective GET` means no GET has a positive expected value. The
+    `p_best_*` columns give how often each option is the best in a draw.
   - Otherwise, the evidence rule's choice.
   - `get_rule` always holds the evidence rule's choice.
   - `get_basis` says what each rule saw.

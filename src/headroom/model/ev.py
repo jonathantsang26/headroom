@@ -35,7 +35,9 @@ chance that no GET applies priced in. p_top_k (the share of draws a flowgate is 
 top k by best EV with a positive best EV; zero-EV ties never count) is reported for
 stability but does not order the list: for the leaders it converges to P(some GET
 applies to the element), a constant per evidence class, so ordering by it would sort
-them by sampling noise. The recommendation is the option most often best (or none)."""
+them by sampling noise. The recommendation is the GET with the highest expected net value
+if pursued, E[max(0, EV_g)] with EV_g counted only where g applies (none if no GET has a
+positive value); the share of draws each option is best is reported beside it."""
 
 from __future__ import annotations
 
@@ -138,6 +140,7 @@ class EVResult:
     p_top_k: dict[str, float]
     p_best: dict[str, dict[str, float]]  # constraint_id -> {option: share of draws}
     recommended: dict[str, str]
+    option_value: dict[str, dict[str, float]]  # cid -> {GET: E[max(0, EV_g) if applicable]}
     candidates: dict[str, list[str]]  # GETs with nonzero applicability
     evidence: dict[str, str]
     unobserved: list[str]  # no observed rent: EV not computed
@@ -198,6 +201,7 @@ def run_ev(
     best_all = np.empty((n, draws)) if n else np.empty((0, draws))
     top_hits = np.zeros(n)
     best_counts = np.zeros((n, len(options)))
+    option_sums = np.zeros((n, len(options)))  # sum over draws of max(0, EV_g), 0 if n/a
     if n:
         lo = np.array([co.rent_musd.lo for _, co in scored])
         mode = np.array([co.rent_musd.expected for _, co in scored])
@@ -233,6 +237,7 @@ def run_ev(
             best_all[:, start:start + d] = best
             for j in range(len(options)):
                 best_counts[:, j] += (choice == j).sum(axis=1)
+                option_sums[:, j] += np.maximum(stack[j], 0.0).sum(axis=1)
             idx = np.argpartition(best, n - k, axis=0)[n - k:, :]
             # a draw where the best option is doing nothing (EV 0) is never a top-k hit:
             # otherwise zero-EV flowgates would enter the top k by tie-breaking alone
@@ -243,6 +248,7 @@ def run_ev(
                  f"ratio draw, mean {ratio_mean(forward):.3g})" if forward is not None
                  else "observed rent (forward band)")
     out_ev, out_mean, out_p, out_best, out_rec, out_cand = {}, {}, {}, {}, {}, {}
+    out_val = {}
     for i, (c, co) in enumerate(scored):
         cid = c.constraint_id
         p5, p50, p95 = (float(x) for x in np.percentile(best_all[i], [5, 50, 95]))
@@ -263,7 +269,14 @@ def run_ev(
         out_p[cid] = float(top_hits[i]) / draws
         shares = {opt: float(best_counts[i, j]) / draws for j, opt in enumerate(options)}
         out_best[cid] = shares
-        out_rec[cid] = max(options, key=lambda o: (shares[o], -options.index(o)))
+        # the GET worth pursuing: the highest expected net value if it is the one pursued
+        # (0 where it turns out not to apply or not to pay); none if no GET is worth it.
+        # The most frequent best option would read "none" whenever every applicability
+        # probability is below one half, however large the expected value.
+        value = {opt: float(option_sums[i, j]) / draws for j, opt in enumerate(options)}
+        out_val[cid] = {o: v for o, v in value.items() if o != NO_GET}
+        best_get = max(options[1:], key=lambda o: (value[o], -options.index(o)))
+        out_rec[cid] = best_get if value[best_get] > 0 else NO_GET
     for c in constraints:
         cid = c.constraint_id
         out_cand[cid] = [g for g in SINGLE_GETS
@@ -272,6 +285,7 @@ def run_ev(
             out_cand[cid].append(COMBINATION)
     return EVResult(
         ev=out_ev, ev_mean=out_mean, p_top_k=out_p, p_best=out_best, recommended=out_rec,
+        option_value=out_val,
         candidates=out_cand, evidence=evidence, unobserved=unobserved, k=k,
         priors_version=priors["version"], priors_sha256=sha,
     )

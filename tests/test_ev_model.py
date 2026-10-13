@@ -274,3 +274,16 @@ def test_priors_with_non_json_values_are_refused_at_load():
     bad["accessed"] = datetime.date(2026, 10, 13)  # an unquoted YAML date
     with pytest.raises(ValueError, match="JSON values only"):
         validate_priors(bad)
+
+
+def test_the_recommendation_is_the_get_worth_pursuing_not_the_most_frequent_best(region):
+    """With every applicability below one half, doing nothing is the most frequent best
+    option, yet a large-rent flowgate still has a GET worth pursuing."""
+    result = run_pipeline(region, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 0.3)
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = _fixed(0.1)
+    res = _ev_direct(result, p, point_rent=True, draws=2000)
+    top = max(res.ev_mean, key=res.ev_mean.get)
+    assert res.p_best[top][NO_GET] > 0.5  # no GET applies in ~70% of draws
+    assert res.recommended[top] == "Dynamic Line Rating"
+    assert res.option_value[top]["Dynamic Line Rating"] == pytest.approx(res.ev_mean[top])
