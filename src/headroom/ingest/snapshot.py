@@ -108,10 +108,19 @@ class Snapshot:
         cols = self._entry(table).get("column_sources", {})
         if not isinstance(cols, dict):
             raise ValueError(f"Snapshot table {table!r} column_sources must be an object")
-        return {
+        out = {
             str(col): _parse_stamp(stamp, f"Snapshot table {table!r} column {col!r} source")
             for col, stamp in cols.items()
         }
+        # a column's source must also be one of the table's stamps, so the table-level
+        # gate sees every source the table's values came from
+        declared = {(s.source, s.source_version) for s in [self.stamp(table), *self.contributors(table)]}
+        for col, st in out.items():
+            if (st.source, st.source_version) not in declared:
+                raise ValueError(
+                    f"Snapshot table {table!r} column {col!r} source {st.source} "
+                    f"{st.source_version} is not the table's stamp or a contributor")
+        return out
 
     def coverage(self, table: str) -> dict:
         """Declared coverage of a table: observed (default), partial or unobserved,
@@ -207,6 +216,7 @@ def update_manifest(
     raw: dict | None = None,
     snapshot_date: str | None = None,
     revision: int | None = None,
+    renormalized_from: dict | None = None,
 ) -> Path:
     """Create or merge entries into a snapshot's manifest (adapters call this)."""
     snapshot_dir.mkdir(parents=True, exist_ok=True)
@@ -219,6 +229,8 @@ def update_manifest(
     }
     if revision is not None and not mpath.exists():
         m["revision"] = revision  # the N-th build of snapshot_date (N >= 2)
+    if renormalized_from is not None and not mpath.exists():
+        m["renormalized_from"] = renormalized_from  # raw bytes reused, code re-run
     if tables:
         m["tables"].update(tables)
     if raw:

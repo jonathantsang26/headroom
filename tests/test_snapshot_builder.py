@@ -204,3 +204,55 @@ def test_no_activate_leaves_current(root, monkeypatch):
     assert (root / "current").readlink() == Path("2026-09-22")
     assert builder.main(["--date", DAY, "--activate-only"]) == 0
     assert (root / "current").readlink() == Path(DAY)
+
+
+def _with_raw(snapshot, payload=b"pinned bytes"):
+    import json
+
+    raw = snapshot / "raw" / "source.bin"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_bytes(payload)
+    update_manifest(snapshot, raw={"raw:source": {
+        "url": "https://example.invalid/source.bin", "path": "raw/source.bin",
+        "sha256": sha256_of(raw), "retrieved_at": "2026-09-22T00:00:00+00:00",
+        "bytes": len(payload)}})
+    mpath = snapshot / "snapshot_manifest.json"
+    m = json.loads(mpath.read_text())
+    m["snapshot_date"] = snapshot.name  # a real snapshot's date matches its directory
+    mpath.write_text(json.dumps(m))
+
+
+def test_renormalize_reuses_raw_bytes_into_a_revision(root, monkeypatch):
+    _with_raw(root / "2026-09-22")
+    seen = []
+
+    def fetch(_):
+        raise AssertionError("re-normalize never fetches")
+
+    def normalize(staged):
+        seen.append((staged / "raw" / "source.bin").read_bytes())
+        _complete(staged)
+
+    _set_adapter(monkeypatch, fetch=fetch, normalize=normalize)
+    assert builder.main(["--renormalize-from", "2026-09-22", "--revision", "2"]) == 0
+    new = root / "2026-09-22.r2"
+    import json
+
+    m = json.loads((new / "snapshot_manifest.json").read_text())
+    old = json.loads((root / "2026-09-22" / "snapshot_manifest.json").read_text())
+    assert seen == [b"pinned bytes"]
+    assert m["revision"] == 2 and m["raw"] == old["raw"]
+    assert m["renormalized_from"]["snapshot"] == "2026-09-22"
+    assert (root / "current").resolve() == new
+
+
+def test_renormalize_refuses_changed_raw_bytes_and_needs_a_revision(root, monkeypatch):
+    _with_raw(root / "2026-09-22")
+    _set_adapter(monkeypatch)
+    assert builder.main(["--renormalize-from", "2026-09-22"]) == 1  # no --revision
+    (root / "2026-09-22" / "raw" / "source.bin").write_bytes(b"tampered")
+    assert builder.main(["--renormalize-from", "2026-09-22", "--revision", "2"]) == 1
+    assert not (root / "2026-09-22.r2").exists()
+    assert (root / "current").readlink() == Path("2026-09-22")
+    assert builder.main(["--renormalize-from", "2026-09-22", "--date", DAY,
+                         "--revision", "2"]) == 1  # the date is the source's

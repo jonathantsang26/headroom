@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
 import sys
 import tempfile
 from datetime import date
@@ -12,7 +14,7 @@ from uuid import uuid4
 
 from headroom.ingest.adapters import eia, hifld, pudl_ferc1, spp
 from headroom.ingest.adapters.common import install_ssl_opener
-from headroom.ingest.snapshot import Snapshot, update_manifest
+from headroom.ingest.snapshot import MANIFEST_NAME, Snapshot, sha256_of, update_manifest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 SPP_ROOT = _REPO_ROOT / "data" / "raw" / "spp"
@@ -77,9 +79,34 @@ def activate_snapshot(snapshot_dir: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _reuse_raw(source: Path, staged: Path) -> dict:
+    """Link (or copy) a completed snapshot's raw files into staging, verifying each
+    against its recorded sha256; returns the source's raw entries, unchanged."""
+    if source.is_symlink() or not source.is_dir():
+        raise ValueError(f"Re-normalize needs a completed snapshot directory: {source}")
+    raw = json.loads((source / MANIFEST_NAME).read_text()).get("raw") or {}
+    if not raw:
+        raise ValueError(f"{source} records no raw inputs")
+    for name, entry in raw.items():
+        rel = Path(entry["path"])
+        if rel.is_absolute() or ".." in rel.parts:
+            raise ValueError(f"Raw input {name!r} has an unsafe path: {rel}")
+        src, dst = source / rel, staged / rel
+        if sha256_of(src) != entry["sha256"]:
+            raise ValueError(f"Raw input {name!r} in {source} does not match its sha256")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(src, dst)
+        except OSError:
+            shutil.copy2(src, dst)
+    return raw
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--date", type=_snapshot_date, default=date.today().isoformat())
+    ap.add_argument("--date", type=_snapshot_date, default=None,
+                    help="snapshot date (default: today; with --renormalize-from, the "
+                         "source snapshot's date)")
     ap.add_argument(
         "--revision", type=_revision, default=None,
         help="N-th build of the same day (N >= 2): snapshot YYYY-MM-DD.rN. Dated "
@@ -93,7 +120,29 @@ def main(argv: list[str] | None = None) -> int:
         "--no-activate", action="store_true",
         help="Build and validate, but leave `current` where it is.",
     )
+    ap.add_argument(
+        "--renormalize-from", metavar="SNAPSHOT", default=None,
+        help="Re-run the normalizers on an existing snapshot's raw files (no network) "
+             "into a new revision of its date. Needs --revision.",
+    )
     args = ap.parse_args(argv)
+    source = None
+    if args.renormalize_from:
+        source = SPP_ROOT / args.renormalize_from
+        try:
+            day = json.loads((source / MANIFEST_NAME).read_text())["snapshot_date"]
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"[FAILED] cannot read {source}: {exc}", file=sys.stderr)
+            return 1
+        if args.date not in (None, day):
+            print(f"[FAILED] {source} is a snapshot of {day}, not {args.date}", file=sys.stderr)
+            return 1
+        if args.revision is None or args.activate_only:
+            print("[FAILED] --renormalize-from needs --revision N and no --activate-only",
+                  file=sys.stderr)
+            return 1
+        args.date = day
+    args.date = args.date or date.today().isoformat()
 
     name = snapshot_name(args.date, args.revision)
     snap = SPP_ROOT / name
@@ -118,13 +167,21 @@ def main(argv: list[str] | None = None) -> int:
     staged = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=SPP_ROOT))
     (staged / "raw").mkdir()
     (staged / "normalized").mkdir()
-    update_manifest(staged, snapshot_date=args.date, revision=args.revision)
 
-    install_ssl_opener()
     try:
-        for name, fetch, _ in ADAPTERS:
-            entry = fetch(staged)
-            print(f"[fetched] {name}: {entry.get('bytes', '?')} bytes")
+        if source is not None:
+            raw = _reuse_raw(source, staged)
+            update_manifest(staged, snapshot_date=args.date, revision=args.revision, raw=raw,
+                            renormalized_from={
+                                "snapshot": source.name,
+                                "manifest_sha256": sha256_of(source / MANIFEST_NAME)})
+            print(f"[reused] {len(raw)} raw inputs from {source.name}")
+        else:
+            update_manifest(staged, snapshot_date=args.date, revision=args.revision)
+            install_ssl_opener()
+            for name, fetch, _ in ADAPTERS:
+                entry = fetch(staged)
+                print(f"[fetched] {name}: {entry.get('bytes', '?')} bytes")
         for name, _, normalize in ADAPTERS:
             normalize(staged)
             print(f"[normalized] {name}")

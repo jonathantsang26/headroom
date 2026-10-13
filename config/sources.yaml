@@ -36,8 +36,8 @@ sources:
     source_version: "pudl_v2024.11.0:eia860_2024"
     compliance:
       publishable: true
-      basis: "EIA survey data is public domain (US gov)."
-      notes: ""
+      basis: "EIA survey data is public domain (US gov); this copy is PUDL's redistribution, released under CC-BY 4.0: attribute Catalyst Cooperative's Public Utility Data Liberation project."
+      notes: "Read from the pinned PUDL release on S3, not from EIA directly."
 
   - name: hifld_transmission
     bucket: a

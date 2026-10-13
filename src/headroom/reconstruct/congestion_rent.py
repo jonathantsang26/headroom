@@ -62,7 +62,8 @@ def congestion_observations(
                     lo=lo, expected=v, hi=hi,
                     basis="Observed DA congestion rent (sum of flow x shadow price), "
                     "-40%/+50% forward band ($M/yr).",
-                    stage="reconstruct", provider=PROVIDER, lineage_id=f"rent:{cid}",
+                    stage="reconstruct", provider=r.get("_rent_provider") or PROVIDER,
+                    lineage_id=f"rent:{cid}",
                     inputs=r.get("_rent_lineage") or lineage,
                 )
             )
@@ -109,8 +110,10 @@ def congestion_observations(
                 basis="Observed DA congestion $ outside the flowgate's largest month (annual "
                 "minus largest month), -40%/+50% forward band ($M/yr). 0 = all of the "
                 "year's congestion $ fell in one month.",
-                stage="reconstruct", provider=PROVIDER, lineage_id=f"recurring_rent:{cid}",
-                inputs=r.get("_rent_lineage") or lineage,
+                stage="reconstruct", provider=r.get("_rent_provider") or PROVIDER,
+                lineage_id=f"recurring_rent:{cid}",
+                inputs=[*(r.get("_rent_lineage") or []), *(r.get("_max_month_lineage") or [])]
+                or lineage,
             ))
         out[cid] = CongestionObs(
             constraint_id=cid,

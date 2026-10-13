@@ -36,7 +36,8 @@ The manifest format is:
 }
 ```
 
-`revision`, `coverage`, `note`, `contributors` and `column_sources` are optional. Coverage defaults to `observed`.
+`revision`, `renormalized_from`, `coverage`, `note`, `contributors` and
+`column_sources` are optional. Coverage defaults to `observed`.
 An `unobserved` table could not be obtained from a public source and is written
 header-only; every signal it feeds becomes a flagged zero that adds nothing to any
 composite (never zero evidence), and the run's `quality_report.json` names the
@@ -44,8 +45,10 @@ signals and scores it affects. `contributors` lists further sources a table was
 derived from (for example bus roles from EIA-860 on HIFLD geometry); each is
 validated like the primary stamp and enters lineage. `column_sources` names the
 source of a single column when it differs from the table's primary source. Each one
-must also appear among the table's stamps. The loader stamps that column's row Facts
-with it. For example, SPP `congestion.rent_musd` comes from SPP's
+must also be the table's stamp or one of its contributors, so the table-level gate
+sees it. Only columns the loader stamps one by one may be listed; any other column
+fails the load rather than being silently stamped with the table's source. The
+loader stamps that column's row Facts with it. For example, SPP `congestion.rent_musd` comes from SPP's
 congestion-by-constraint files, while the rest of the row comes from the binding
 constraints. A score's lineage therefore names the source each of its values actually
 came from. Column contracts for each table are in [ADAPTERS.md](ADAPTERS.md).
@@ -54,9 +57,18 @@ came from. Column contracts for each table are in [ADAPTERS.md](ADAPTERS.md).
 
 A snapshot id is its date, `YYYY-MM-DD`. A second build on the same day is a
 revision, `YYYY-MM-DD.rN` with N ≥ 2. Its manifest records `"revision": N` and the
-same `snapshot_date`. Ids that fit neither form are rejected. A revision is a new,
+same `snapshot_date`. The builder creates only these two forms. A revision is a new,
 separate directory. The earlier build stays intact, so runs pinned to it can still
 be replayed.
+
+`--renormalize-from <id> --revision N` builds a revision without the network. It
+links the source snapshot's raw files, checks each one against its recorded sha256,
+and re-runs the normalizers with the current code. The manifest keeps the source's
+`raw` entries unchanged and records `renormalized_from` (the source id and manifest
+sha256). Use it when an adapter fix changes what a snapshot's tables or notes should
+say. `2026-10-13.r2` was built this way: its nine tables are byte-identical to
+`2026-10-13`. Only the congestion table's coverage (now `partial`, because 18
+flowgates have no posted dollars) and its note changed.
 
 ## Build and activate
 

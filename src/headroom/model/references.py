@@ -45,6 +45,14 @@ def check_reference_rule(scoring, input_identity: dict) -> None:
     want = rule.get("congestion_sha256")
     if not want:
         return
+    coi = rule.get("coi_definition")
+    used = (scoring.definitions or {}).get("cost_of_inaction", "rent_x_persistence")
+    if coi is not None and coi != used:
+        raise ValueError(
+            f"scoring references were derived with cost_of_inaction={coi}, but this "
+            f"scoring uses {used}. Re-derive: python scripts/derive_scoring_refs.py "
+            "<snapshot> --check <scoring file>"
+        )
     got = input_identity.get("tables", {}).get("congestion", {}).get("sha256")
     if got != want:
         raise ValueError(

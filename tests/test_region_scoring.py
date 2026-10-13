@@ -17,8 +17,10 @@ from headroom.model.references import check_reference_rule, derive_references
 from headroom.pipeline import run_pipeline
 
 REPO = Path(__file__).resolve().parents[1]
-SUBSET = REPO / "tests" / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13"
-LIVE = REPO / "data" / "raw" / "spp" / "2026-10-13"
+SUBSET = REPO / "tests" / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13.r2"
+SPP_SCORING = REPO / "config" / "regions" / "spp.scoring.yaml"
+LIVE = REPO / "data" / "raw" / "spp" / __import__("yaml").safe_load(SPP_SCORING.read_text())[
+    "reference_rule"]["derived_from_snapshot"]
 
 
 @pytest.fixture(autouse=True)
@@ -64,9 +66,36 @@ def test_guard_refuses_references_from_another_congestion_table(monkeypatch):
     check_reference_rule(replace(ok, reference_rule=None), {})  # no rule: no guard
 
 
-@pytest.mark.skipif(not LIVE.exists(), reason="live 2026-10-13 snapshot not on this machine")
+@pytest.mark.skipif(not LIVE.exists(), reason="the pinned live snapshot is not on this machine")
 def test_committed_spp_references_match_the_live_snapshot():
     spec = importlib.util.spec_from_file_location("derive", REPO / "scripts" / "derive_scoring_refs.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert mod.main([str(LIVE), "--check", str(REPO / "config" / "regions" / "spp.scoring.yaml")]) == 0
+    assert mod.main([str(LIVE), "--check", str(SPP_SCORING)]) == 0
+
+
+def test_guard_refuses_references_derived_under_another_definition(monkeypatch):
+    region = RegionConfig("spp-guard-coi", "SPP", SUBSET, synthetic=False)
+    monkeypatch.setitem(REGIONS, region.name, region)
+    sha = json.loads((SUBSET / "snapshot_manifest.json").read_text())["tables"]["congestion"]["sha256"]
+    rule = {"derived_from_snapshot": "subset", "congestion_sha256": sha,
+            "coi_definition": "recurring_rent"}
+    ok = replace(ScoringConfig.load(), draws=50, reference_rule=rule,
+                 definitions={"cost_of_inaction": "recurring_rent"})
+    run_pipeline(region.name, scoring=ok)
+    with pytest.raises(ValueError, match="cost_of_inaction=recurring_rent"):
+        run_pipeline(region.name, scoring=replace(ok, definitions={}))
+
+
+def test_check_script_compares_the_definition(tmp_path):
+    spec = importlib.util.spec_from_file_location("derive", REPO / "scripts" / "derive_scoring_refs.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    got = mod.derive(str(SUBSET), "recurring_rent")
+    cfg = {"definitions": {"cost_of_inaction": "recurring_rent"}, **got}
+    f = tmp_path / "s.yaml"
+    f.write_text(__import__("yaml").safe_dump(cfg))
+    assert mod.main([str(SUBSET), "--check", str(f)]) == 0
+    cfg["definitions"] = {}  # the pipeline would use rent_x_persistence
+    f.write_text(__import__("yaml").safe_dump(cfg))
+    assert mod.main([str(SUBSET), "--check", str(f)]) == 1

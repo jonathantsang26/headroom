@@ -17,7 +17,7 @@ from headroom.model import ScoringConfig
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
 
-SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13"
+SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13.r2"
 ROWS = {r["constraint_id"]: r for r in csv.DictReader(
     (SUBSET / "normalized" / "congestion.csv").open(newline=""))}
 MULTI = "70BS12WAGS34|25296"

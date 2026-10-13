@@ -18,7 +18,7 @@ from headroom.pipeline import run_pipeline
 from headroom.provenance.gate import assert_publishable
 from headroom.provenance.reproduce import reproduce_from_manifest
 
-SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13"
+SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13.r2"
 PUBLIC = {"hifld_transmission", "eia_860_861", "eia_930", "pudl_ferc_form1",
           "spp_binding_constraints", "spp_congestion_by_constraint", "spp_tcr_funding",
           "spp_itp", "spp_queue"}
@@ -65,16 +65,23 @@ def test_real_subset_clears_the_gate_and_reports_its_gaps(tmp_path, monkeypatch,
         assert s.signal_coverage["loading"] == "unobserved"  # SPP elements are not placeable
         assert s.signal_coverage["planning"] == "unobserved"
         if s.constraint_id in rent_rows:
-            # observed rent cites the congestion-by-constraint Facts, under their stamp
+            # observed rent cites only the congestion-by-constraint Fact, under its stamp
             rent = result.bucket_b.congestion[s.constraint_id].rent_musd
-            assert "spp_congestion_by_constraint" in result.store.source_closure(rent.lineage_id)
+            assert result.store.source_closure(rent.lineage_id) == {"spp_congestion_by_constraint"}
+            assert rent.inputs == [f"obs:congestion:{s.constraint_id}:rent_musd"]
+            assert "rent=spp_congestion_by_constraint" in s.provenance
 
     d = deliver(result, tmp_path / "out")
     assert d.mode == "shareable" and d.public_only and d.blocked == []
     assert (tmp_path / "out" / "shortlist.csv").exists()
     qr = json.loads(Path(d.paths["quality_report"]).read_text())
     sources = {a["source"]: a for a in qr["attribution"]}
-    assert {"spp_congestion_by_constraint", "spp_binding_constraints", "hifld_transmission"} <= set(sources)
+    assert {"spp_congestion_by_constraint", "spp_binding_constraints", "hifld_transmission",
+            "spp_tcr_funding", "eia_860_861"} <= set(sources)  # contributors carry terms too
+    assert "CC-BY" in sources["eia_860_861"]["basis"]  # via PUDL's redistribution
+    consulted = {a["source"] for a in qr["consulted_nothing_obtained"]}
+    assert "spp_itp" in consulted and "spp_itp" not in sources  # planning is unobserved
+    assert qr["tables"]["congestion"]["coverage"] == "partial"  # some flowgates lack $
     assert all("terms-conditions" in a["basis"] for name, a in sources.items() if name.startswith("spp_"))
     assert qr["dc_screen"]["status"].startswith("not_run")
     assert qr["unobserved_weight_all"] == pytest.approx(0.5)  # loading+demand+planning
@@ -102,3 +109,37 @@ def test_one_synthetic_stamped_table_blocks_the_shareable_export(tmp_path, monke
     assert d.mode == "internal-synthetic"
     assert table in d.blocked_tables  # even when no score depends on the table
     assert not (tmp_path / "out" / "shortlist.csv").exists()
+
+
+def _copy_with(tmp_path, edit) -> Path:
+    snap = tmp_path / "2026-10-13.r2"
+    shutil.copytree(SUBSET, snap)
+    m = json.loads((snap / MANIFEST_NAME).read_text())
+    edit(m)
+    (snap / MANIFEST_NAME).write_text(json.dumps(m))
+    return snap
+
+
+def test_a_non_publishable_contributor_blocks_the_shareable_export(tmp_path, monkeypatch, scoring):
+    def synthetic_contributor(m):
+        m["tables"]["buses"]["contributors"][0].update(
+            {"source": "synthetic_fixture", "source_version": "test-v1"})
+
+    snap = _copy_with(tmp_path, synthetic_contributor)
+    d = deliver(run_pipeline(_region(monkeypatch, snap), scoring=scoring), tmp_path / "out")
+    assert d.mode == "internal-synthetic" and "buses:synthetic_fixture" in d.blocked_tables
+
+
+def test_column_sources_must_be_table_stamps_and_loader_stamped(tmp_path, monkeypatch, scoring):
+    def stray(m):  # a column source that is not among the table's stamps
+        m["tables"]["congestion"]["column_sources"]["rent_musd"].update(
+            {"source": "synthetic_fixture", "source_version": "test-v1"})
+
+    with pytest.raises(ValueError, match="not the table's stamp or a contributor"):
+        run_pipeline(_region(monkeypatch, _copy_with(tmp_path / "a", stray)), scoring=scoring)
+
+    def unstamped(m):  # a column the loader would not stamp per column
+        m["tables"]["queue"]["column_sources"] = {"mw": dict(m["tables"]["queue"]["contributors"][0])}
+
+    with pytest.raises(ValueError, match="not supported"):
+        run_pipeline(_region(monkeypatch, _copy_with(tmp_path / "b", unstamped)), scoring=scoring)

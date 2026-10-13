@@ -181,6 +181,13 @@ def _load_live(
     return bundle
 
 
+# Columns whose row Facts take their own source from `column_sources`.
+PER_COLUMN_STAMPED = {
+    "congestion": {"monthly_cost_musd", "hours_binding", "shadow_price_sum_usd_per_mw",
+                   "breached_hours", "months_binding", "rent_musd", "max_month_cost_musd"},
+}
+
+
 def _leaf(stamp: SourceStamp | None, *, value, provider: str, lineage_id: str,
           unit: str | None = None, as_reported: str | None = None) -> Fact:
     """A raw observation: real-stamped on a live run, synthetic on fixtures."""
@@ -220,6 +227,12 @@ def _envelope(
     column_sources: dict[str, dict[str, SourceStamp]] | None = None,
 ) -> IngestBundle:
     column_sources = column_sources or {}
+    for t, cols in column_sources.items():
+        unsupported = set(cols) - PER_COLUMN_STAMPED.get(t, set())
+        if unsupported:  # fail closed: the loader would stamp them with the table's source
+            raise ValueError(f"column_sources for {t}.{sorted(unsupported)} are not supported: "
+                             "the loader stamps per column only " +
+                             str(sorted(PER_COLUMN_STAMPED.get(t, set()))))
     # One Fact per table: its sha256, under the table's stamp (and one per
     # contributing source), so absence-derived values have lineage too.
     table_lineage: dict[str, list[str]] = {}
@@ -334,11 +347,17 @@ def _envelope(
         )
         # observed $ (its own source when stamped by column) kept separately so a
         # rent value cites only the facts it was computed from
+        cols = column_sources.get("congestion", {})
         r["_rent_lineage"] = _row_facts(
             store, stamps["congestion"], TABLE_PROVIDER["congestion"], r, prefix,
-            ("rent_musd", "max_month_cost_musd"),
-            column_sources=column_sources.get("congestion", {}),
+            ("rent_musd",), column_sources=cols,
         )
+        r["_max_month_lineage"] = _row_facts(
+            store, stamps["congestion"], TABLE_PROVIDER["congestion"], r, prefix,
+            ("max_month_cost_musd",), column_sources=cols,
+        )
+        r["_rent_provider"] = (cols["rent_musd"].source if "rent_musd" in cols
+                               else TABLE_PROVIDER["congestion"])
 
     planning = tables["planning"]
     for i, r in enumerate(planning):

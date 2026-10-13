@@ -258,10 +258,14 @@ def _line_key(monitored: str) -> str:
 
 
 def _facility_key(element: str, monitored: str, cid: str) -> str:
-    """The corridor key: one physical element, one key. Lines ignore endpoint order
-    (SPP spells some both ways round); SPP names every multi-element interface
-    "Multi-Element Constraint", so those are keyed by their constraint name; a
-    blank element stays blank (the corridor falls back to the constraint id)."""
+    """The corridor key: one physical element, one key, as far as public names allow.
+    Lines ignore endpoint order (SPP spells some both ways round); SPP names every
+    multi-element interface "Multi-Element Constraint", so those are keyed by their
+    constraint name; a blank element stays blank (the corridor falls back to the
+    constraint id). Transformers are keyed by SPP's monitored text, which names the
+    substation, not the bank ("XFMR GAVINS - GAVINS" for GAVINS1, 2 and 3): every
+    transformer at a substation shares one key, since public data cannot tell the
+    banks apart."""
     if element == "ln":
         return f"LN {_line_key(monitored)}"
     if element == "multi":

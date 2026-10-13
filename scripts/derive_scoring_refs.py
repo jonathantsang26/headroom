@@ -9,8 +9,10 @@ cost_of_inaction follows the scoring file's `definitions`.
     python scripts/derive_scoring_refs.py data/raw/spp/2026-10-13 --check config/regions/spp.scoring.yaml
 
 Without --check, prints the references and the reference_rule block to paste into the
-region's scoring file. With --check, exits 1 (with a diff) unless the file's references
-and congestion_sha256 match. Reads only hash-verified tables.
+region's scoring file. With --check, exits 1 (with a diff) unless the file's references,
+congestion_sha256 and cost_of_inaction definition match. The definition defaults to the
+one the pipeline would use for that file (its `definitions`, else rent_x_persistence).
+Reads only hash-verified tables.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ def derive(snapshot_dir: str, coi_definition: str) -> dict:
             "derived_from_snapshot": snap.root.name,
             "snapshot_manifest_sha256": snap.manifest_sha256,
             "congestion_sha256": snap.manifest["tables"]["congestion"]["sha256"],
+            "coi_definition": coi_definition,
             "n_rent": d["n_rent"], "n_hours": d["n_hours"], "n_coi": d["n_coi"],
             "script": "scripts/derive_scoring_refs.py",
         },
@@ -58,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     cfg = yaml.safe_load(args.check.read_text()) if args.check else {}
     coi = args.coi_definition or (cfg.get("definitions") or {}).get(
-        "cost_of_inaction", "recurring_rent")
+        "cost_of_inaction", "rent_x_persistence")  # the pipeline's default
     got = derive(args.snapshot_dir, coi)
     if not args.check:
         json.dump(got, sys.stdout, indent=2)
@@ -66,10 +69,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     diffs = [f"references.{k}: file {cfg.get('references', {}).get(k)} != derived {v}"
              for k, v in got["references"].items() if cfg.get("references", {}).get(k) != v]
-    have = (cfg.get("reference_rule") or {}).get("congestion_sha256")
-    if have != got["reference_rule"]["congestion_sha256"]:
-        diffs.append(f"reference_rule.congestion_sha256: file {have} != "
-                     f"{got['reference_rule']['congestion_sha256']}")
+    rule = cfg.get("reference_rule") or {}
+    for key in ("congestion_sha256", "coi_definition"):
+        if rule.get(key) != got["reference_rule"][key]:
+            diffs.append(f"reference_rule.{key}: file {rule.get(key)} != "
+                         f"{got['reference_rule'][key]}")
     for line in diffs:
         print(line, file=sys.stderr)
     print("OK" if not diffs else f"{len(diffs)} mismatch(es)")
