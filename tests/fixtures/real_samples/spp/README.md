@@ -6,7 +6,9 @@ every data line is copied verbatim from the source file. Nothing here is edited 
 | file | source | taken |
 |---|---|---|
 | `da_bc_2025MM_sample.csv.zip` (MM = 01..12) | `https://portal.spp.org/file-browser-api/download/da-binding-constraints?path=%2F2025%2FMM%2FDA-BC-MONTHLY-2025MM.csv.zip` (member `DA-BC-MONTHLY-2025MM.csv`) | downloaded 2026-10-12 |
-| `gi_active_queue_sample.csv` | `https://opsportal.spp.org/Studies/GenerateActiveCSV` ("Last Updated On" 10/9/2026) | downloaded 2026-10-11 |
+| `gi_active_queue_sample.csv` | `https://opsportal.spp.org/Studies/GenerateActiveCSV` ("Last Updated On" 10/12/2026) | downloaded 2026-10-13 |
+| `cbc_2025MM_sample.csv` (MM = 01..12) | `https://portal.spp.org/file-browser-api/download/congestion-by-constraint?path=%2F2025%2FCongestion-Constraint-2025MM.csv` | downloaded 2026-10-13 |
+| `tcr_2025MM_sample.csv` (MM = 01..12) | `https://portal.spp.org/file-browser-api/download/monthly-funding-by-constraint?path=%2F2025%2FTCR-CONSTRAINT-2025MM.csv` | downloaded 2026-10-13 |
 | `buses_sample.csv` | HIFLD Open `Electric_Power_Transmission_Lines` (SUB_1/SUB_2 names) | downloaded 2026-10-12 |
 
 - **DA binding constraints**: twelve monthly archives, each holding the monthly file's
@@ -26,7 +28,12 @@ every data line is copied verbatim from the source file. Nothing here is edited 
   reversed-endpoint spellings and multi-spelling contingent facilities. The lines are
   verbatim; the zip containers were rewritten (deflate, same member names), so their bytes
   differ from SPP's archives.
-- **GI active queue**: the first two lines (`"Last Updated On"` and the header) and 42
+- **Congestion $ (CBC) and TCR funding**: each month's header line plus every line whose
+  Constraint Name is one of the sample flowgates' names (244 CBC lines, 196 TCR lines),
+  verbatim. The CBC cut happens to carry one duplicate key (identical Sum) and the
+  SOONER phase shifter's one positive-Sum (negative-rent) month.
+- **GI active queue**: re-cut on 2026-10-13 from the 10/12/2026 export (the pin moved):
+  the first two lines (`"Last Updated On"` and the header) and the same 42
   records, all verbatim (CRLF; one POI holds an embedded newline). Picked to include
   commercial-operation, `None`, `ICS`, on-suspension, study-stage, blank-POI, blank-fuel
   and line-POI requests. The active export carries no withdrawn requests (no WITHDRAWN
