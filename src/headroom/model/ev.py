@@ -14,7 +14,11 @@ For flowgate f and GET g:
   binding instead (a prior; first order overstates).
 - C_g: annualized cost of one deployment that relieves one flowgate ($M/yr, a prior).
 - applicable_g(f): Bernoulli with a prior probability by evidence class (element
-  type, BASE vs N-1, episodic binding), drawn independently per flowgate.
+  type, BASE vs N-1, episodic binding). Whether a GET can relieve a limit is a
+  property of the physical element, so each draw takes one uniform per (element,
+  GET) and every flowgate on that element compares it with its own class's
+  probability: flowgates on one element agree, and a higher-probability class is
+  applicable whenever a lower one is.
 
 Priors (u, h, C, applicability) are judgement with cited sources, loaded from a
 priors file whose full content and sha256 are recorded in the run manifest. They are
@@ -22,7 +26,7 @@ assumptions, not data: they appear in each EV Range's basis, never as lineage le
 EV lineage cites only observed facts (rent, the constraint row, its congestion row).
 
 Per Monte Carlo draw, u, h and C are shared across flowgates (they are uncertainty
-about the technology, not the element); applicability is drawn per flowgate. Doing
+about the technology, not the element); applicability is drawn per element. Doing
 nothing is always an option (EV 0), so the best EV is never negative. The ranking
 metric is the best EV; p_top_k is the share of draws a flowgate is in the top k by
 best EV; the recommendation is the GET most often best (or none)."""
@@ -172,6 +176,8 @@ def run_ev(
     options = [NO_GET, *SINGLE_GETS, COMBINATION]
     p_app = {g: np.array([gets[g]["applicability"][evidence[c.constraint_id]] for c, _ in scored])
              for g in SINGLE_GETS}
+    elements = {e: i for i, e in enumerate(sorted({c.corridor for c, _ in scored}))}
+    element_of = np.array([elements[c.corridor] for c, _ in scored], dtype=int)
 
     best_all = np.empty((n, draws)) if n else np.empty((0, draws))
     top_hits = np.zeros(n)
@@ -191,7 +197,8 @@ def run_ev(
             for g in SINGLE_GETS:
                 u[g] = _tri(rng, *_triangle(gets[g]["relief_share"], g), (d,))
                 cost[g] = _tri(rng, *_triangle(gets[g]["annual_cost_musd"], g), (d,))
-                app[g] = rng.random((n, d)) < p_app[g][:, None]
+                draw = rng.random((len(elements), d))  # one per element and GET
+                app[g] = draw[element_of] < p_app[g][:, None]
                 ev[g] = np.where(app[g], u[g] * h * rent - cost[g], -np.inf)
             dlr, apfc = SINGLE_GETS[0], SINGLE_GETS[1]
             u_c = 1.0 - (1.0 - u[dlr]) * (1.0 - u[apfc])
