@@ -74,14 +74,42 @@ to bind in 2025. Its top ten corridors bound 671–5,724 hours each, mostly unde
 contingencies in the OG&E, GRDA, CSWS and Westar areas of Oklahoma and Kansas. The
 monitored elements' voltages are not public.
 
-## Scale check on reconstructed rent
+## Scale check on congestion dollars
 
-SPP posts shadow prices, not dollars. Rent = Σ|shadow price| × the element's limit, and
-the limit is not public, so it enters as a stated 100–1,200 MW band with mode 250 MW.
-Across the 1,601 flowgates, Σ|SP| is 8.50 M$/MW, which gives $0.85B / $2.12B / $10.2B
-at the band's low / mode / high. The only SPP Market Monitor figure found is about
-$1.2B of congestion in 2021 (draft report, via S&P Global). That suggests the 250 MW
-mode is on the high side. A single shared rating band scales every flowgate's expected
-rent by the same factor, so it changes magnitudes and band widths, not the order of
-expected rents. Calibrating it would need a public per-constraint limit, such as SPP's
-flowgate ratings. That is a follow-up.
+Since snapshot 2026-10-13, rent is observed. It is no longer Σ|shadow price| × an
+assumed rating band. SPP's monthly congestion-by-constraint (CBC) files post the
+day-ahead congestion dollars for each constraint and contingency. Headroom joins them
+to the binding constraints on name, contingency and monitored element. Three 2025
+totals can be compared:
+
+| Measure | 2025 DA congestion | Source |
+|---|---|---|
+| CBC, sum over every constraint | $2,410.0M | SPP congestion by constraint, 12 monthly files |
+| CBC, flowgates Headroom scores | $2,408.7M (2,054 of 2,072 flowgates) | the same, after the join |
+| TCR funding, DA Collected | $1,957.8M | SPP TCR funding, 12 monthly files |
+| Market Monitor, DA congestion | $1,977M | SPP MMU State of the Market 2025, Fig. 5-22 |
+
+TCR DA Collected matches the Market Monitor's figure to 99.0%. CBC is 1.23× both. The
+gap is not netting: no CBC constraint-month is negative, and 73 exact duplicate rows
+are dropped before summing. It is per constraint. On the 4,153 (month, constraint)
+pairs present in both files, CBC sums to $2,370.3M and DA Collected to $1,942.6M. Among
+the 100 largest constraints by CBC, the CBC/DA Collected ratio is 1.13 at p50 (1.01
+p10, 2.20 p90). The largest gaps are on external or coordinated flowgates (for
+example `FT_CAFT_CA34_2S_LN@FT_CAL<1991>`) and a few transformers. SPP does not
+document the difference in these files. One plausible cause is that DA Collected counts
+only the rent collected in SPP's settlement while CBC prices total flow, but this has
+not been confirmed.
+
+What this means for the ranking:
+- Annual totals per constraint agree in order: Spearman 0.966 over the 1,855
+  constraints in both files, and 47 of the top 50 are the same.
+- Absolute EV and rent figures are probably high by about 13% at the median and more
+  on coordinated flowgates. They are stated as SPP's posted per-constraint dollars,
+  not as collected rent.
+- TCR DA Collected is kept as a calibration total in the congestion table's note. It
+  is not used per flowgate.
+
+The 2026-10-12 snapshot had no dollar files. Its rent was Σ|SP| × a 100–1,200 MW band
+(mode 250 MW): $2.12B at the mode across 1,601 flowgates. The observed CBC total
+implies an |SP|-weighted limit of about 214 MW (p50 169 MW per flowgate), so the old
+mode was about 17% high in aggregate.

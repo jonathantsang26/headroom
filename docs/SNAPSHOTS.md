@@ -18,6 +18,7 @@ The manifest format is:
 {
   "schema_version": 1,
   "snapshot_date": "YYYY-MM-DD",
+  "revision": 2,
   "tables": {
     "<table>": {
       "source": "<registered-source>",
@@ -27,21 +28,35 @@ The manifest format is:
       "sha256": "<64-hex-digit-file-digest>",
       "coverage": "observed | partial | unobserved",
       "note": "<what the table covers and what it could not obtain>",
-      "contributors": [{"source": "...", "source_version": "...", "retrieved_at": "..."}]
+      "contributors": [{"source": "...", "source_version": "...", "retrieved_at": "..."}],
+      "column_sources": {"<column>": {"source": "...", "source_version": "...", "retrieved_at": "..."}}
     }
   },
   "raw": {}
 }
 ```
 
-`coverage`, `note` and `contributors` are optional. Coverage defaults to `observed`.
+`revision`, `coverage`, `note`, `contributors` and `column_sources` are optional. Coverage defaults to `observed`.
 An `unobserved` table could not be obtained from a public source and is written
 header-only; every signal it feeds becomes a flagged zero that adds nothing to any
 composite (never zero evidence), and the run's `quality_report.json` names the
 signals and scores it affects. `contributors` lists further sources a table was
 derived from (for example bus roles from EIA-860 on HIFLD geometry); each is
-validated like the primary stamp and enters lineage. Column contracts for each
-table are in [ADAPTERS.md](ADAPTERS.md).
+validated like the primary stamp and enters lineage. `column_sources` names the
+source of a single column when it differs from the table's primary source. Each one
+must also appear among the table's stamps. The loader stamps that column's row Facts
+with it. For example, SPP `congestion.rent_musd` comes from SPP's
+congestion-by-constraint files, while the rest of the row comes from the binding
+constraints. A score's lineage therefore names the source each of its values actually
+came from. Column contracts for each table are in [ADAPTERS.md](ADAPTERS.md).
+
+## Snapshot ids and revisions
+
+A snapshot id is its date, `YYYY-MM-DD`. A second build on the same day is a
+revision, `YYYY-MM-DD.rN` with N ≥ 2. Its manifest records `"revision": N` and the
+same `snapshot_date`. Ids that fit neither form are rejected. A revision is a new,
+separate directory. The earlier build stays intact, so runs pinned to it can still
+be replayed.
 
 ## Build and activate
 
@@ -58,8 +73,11 @@ To verify and activate an existing snapshot without fetching:
 .venv/bin/python -m headroom.ingest.adapters.build_snapshot --date YYYY-MM-DD --activate-only
 ```
 
-The full builder uses the same command without `--activate-only`. It cannot
-complete while adapters or normalizers are unimplemented. Downloads use temporary
+The full builder uses the same command without `--activate-only`. It fetches every
+source first, then normalizes in a fixed order (hifld, eia, pudl_ferc1, spp). If the
+dated directory already exists, the builder refuses and names the next free revision.
+Pass `--revision N` to build `YYYY-MM-DD.rN` instead. `--no-activate` builds and
+verifies the snapshot without moving `current`. Downloads use temporary
 files and only replace the destination after a complete transfer. Manifest writes
 are also atomic.
 
@@ -98,6 +116,17 @@ Source, runtime, or code drift fails before modeling. Input drift fails before
 lineage is created. Replay then checks the recomputed ranking digest before any
 CLI exports are written. Scoring dictionaries may be serialized in a different
 JSON key order: the recorded signal order preserves random-number consumption.
+
+Scoring settings include the full content of a region's GET priors file (EV ranking)
+and its sha256. Replay checks that sha before modeling. A run whose priors file has
+since changed still replays from the recorded content.
+
+The runtime identity hashes every module under `ingest`, `quality`, `reconstruct`,
+`model`, `provenance`, `schema` and `sources`, plus `pipeline.py`. It does not hash
+`export.py` or the CLI, so changes there do not invalidate replay. Any change to the
+hashed modules does. For example, the 2026-10-12 SPP run replays only at commits
+`99c95f5` through `3b2a397`: `e24272d` changed the SPP adapter. Keep the commit a
+shared run came from.
 
 Legacy manifests lack the evidence needed for historical replay and are rejected.
 They must be replaced by a new run from trusted inputs; adding hashes to an old

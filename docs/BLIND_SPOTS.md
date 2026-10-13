@@ -24,10 +24,14 @@ What the real snapshot cannot see:
   the bus-to-location model is CEII (§1). Every flowgate's monitored line is therefore
   `coverage=unobserved`, and the DC screen, demand pressure and radial test are
   unobserved: they contribute zero to every composite and cannot change the order.
-- **Ratings.** No public source gives a per-element limit, so rent is Σ|DA shadow price|
-  × an assumed 100–1,200 MW band (mode 250 MW). The band is wide and uncalibrated; see
-  CROSSCHECK.md.
+- **Ratings.** No public source gives a per-element limit. Since snapshot 2026-10-13,
+  rent is SPP's own posted day-ahead congestion dollars per constraint, so no rating
+  enters it. Those dollars total 1.23× SPP's collected DA congestion (CROSSCHECK.md).
+  18 of 2,072 flowgates have no posted dollars; their rent is unobserved and they are
+  listed, not ranked by EV.
 - **Planning.** SPP ITP needs and costs are PDF only.
+- **Real-time and outages.** Only the day-ahead market is read. Real-time congestion,
+  outage-driven binding and the TCR market are not scored.
 
 ## 3. Muni/co-op blind spot (coverage)
 Non-filers (many municipals and co-ops) don't appear in FERC Form 1. **Do not treat
@@ -43,12 +47,25 @@ Contingencies that disconnect the grid are recorded with `screen_status=n1_disco
 and a widened band — flagged, never dropped.
 
 ## 5. Modeling simplifications (logged, not hidden)
-- `cost_of_inaction` is sampled independently of `rent`/`persistence` though it is
-  mechanically ∝ rent (weight 0.10; does not move the ranking). See `model/signals.py`.
-- Signals are normalized by fixed references in `config/scoring.yaml`, not learned. They
-  were set on fixtures. On the 2025 SPP data, binding hours exceed `persist_ref_hours`
-  by up to 9.5x, so persistence dominates the composite. Re-referencing is a deliberate,
-  recorded config change that has not been made.
+- **The SPP ranking rests on judgement priors.** `--region spp` ranks flowgates by the
+  expected net value of their best GET (`model/ev.py`). Relief share, the shadow-price
+  haircut, annualized cost and applicability by evidence class come from
+  `config/get_priors.yaml`. These are cited judgement, not observations, and the order
+  of the shortlist depends on them. Their content and sha256 are recorded in every run
+  manifest. The value of relief is first order (u × rent): it ignores the network
+  response beyond the haircut and assumes one deployment relieves one flowgate.
+- **GET applicability without topology.** Element locations are CEII, so the GET rule
+  and the EV applicability classes see only element type, contingency and binding
+  pattern. They do not see parallel paths, terminal limits or line length.
+- `cost_of_inaction` on the fixtures is rent × hours, which counts binding hours a
+  second time. The SPP region uses recurring rent instead: annual dollars minus the
+  largest month (`definitions` in `config/regions/spp.scoring.yaml`). It is still
+  sampled independently of rent.
+- Signals are normalized by fixed references, not learned. For SPP, references are
+  derived by a stated rule (p99 of each observed signal) from the pinned snapshot's
+  congestion table (`scripts/derive_scoring_refs.py`). A run on a different congestion
+  table fails until they are re-derived. `config/scoring.yaml` keeps the fixture
+  values.
 - `miso-synth` reuses the SPP fixtures to prove region-parameterization; it is NOT a
   real MISO ingest.
 
