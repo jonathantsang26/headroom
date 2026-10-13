@@ -164,6 +164,12 @@ def _store_blocked(result: PipelineResult) -> list[str]:
             assert_publishable(lineage_id, result.store, result.registry, public_only=True)
         except PublishabilityError:
             blocked.append(source)
+    # A derived node stamped with a registered source (rather than its stage) would hide
+    # that stamp from the taint walk, which follows inputs: check those stamps too.
+    for node in result.store._nodes.values():
+        spec = result.registry.get(node.source) if node.inputs else None
+        if spec is not None and not spec.publishable and node.source not in blocked:
+            blocked.append(node.source)
     dangling = result.store.dangling_inputs()
     if dangling:
         blocked.append(f"unresolved inputs ({len(dangling)}, e.g. {sorted(dangling)[0]})")

@@ -189,3 +189,18 @@ def test_stamps_must_match_todays_pins(tmp_path, monkeypatch, scoring):
 
     with pytest.raises(ValueError, match="differ from the registry pins"):
         run_pipeline(_region(monkeypatch, _copy_with(tmp_path, stale)), scoring=scoring)
+
+
+def test_a_stamped_derived_value_cannot_launder_its_source(tmp_path, monkeypatch, scoring):
+    """A node carrying a registered non-publishable source and public inputs: the taint
+    walk follows inputs, so the export checks such stamps itself."""
+    from headroom.provenance.envelope import Range
+
+    result = run_pipeline(_region(monkeypatch, SUBSET), scoring=scoring)
+    public_leaf = next(n.lineage_id for n in result.store.leaves()
+                       if n.source == "hifld_transmission")
+    result.store.add(Range(lo=0, expected=1, hi=2, basis="test", source="synthetic_fixture",
+                           provider="synthetic_fixture", source_version="synthetic",
+                           lineage_id="laundered", inputs=[public_leaf]))
+    d = deliver(result, tmp_path / "out")
+    assert d.mode == "internal-synthetic" and "synthetic_fixture" in d.blocked_sources

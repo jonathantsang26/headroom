@@ -54,10 +54,11 @@ def real_range(
     lineage_id: str,
     provider: str | None = None,
     dist: Dist = "triangular",
-    inputs: list[str] | None = None,
 ) -> Range:
-    """A Bucket-B Range carrying its TRUE source. Pass `inputs` when derived from
-    other envelopes (the gate's taint walk follows them); omit for a leaf."""
+    """A Bucket-B Range observed from its TRUE source: a leaf. A value derived from
+    other envelopes goes through provenance/derived.py, whose stage is not a source:
+    the gate's taint walk follows a node's inputs, not its own source, so a stamped
+    node with inputs would hide that stamp from the gate."""
     return Range(
         lo=lo,
         expected=expected,
@@ -68,5 +69,4 @@ def real_range(
         provider=provider or stamp.source,
         source_version=stamp.source_version,
         lineage_id=lineage_id,
-        inputs=list(inputs or []),
     )

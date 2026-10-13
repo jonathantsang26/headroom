@@ -46,9 +46,9 @@ def synthetic_range(
     provider: str,
     lineage_id: str,
     dist: Dist = "triangular",
-    inputs: list[str] | None = None,
 ) -> Range:
-    """A Bucket-B Range imitating `provider` but truly sourced from synthetic data."""
+    """A Bucket-B Range imitating `provider` but truly sourced from synthetic data
+    (a leaf; derived values go through provenance/derived.py)."""
     return Range(
         lo=lo,
         expected=expected,
@@ -59,5 +59,4 @@ def synthetic_range(
         provider=provider,
         source_version=SYNTHETIC_VERSION,
         lineage_id=lineage_id,
-        inputs=list(inputs or []),
     )
