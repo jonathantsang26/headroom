@@ -101,3 +101,32 @@ def test_check_script_compares_the_definition(tmp_path):
     cfg["definitions"] = {}  # the pipeline would use rent_x_persistence
     f.write_text(__import__("yaml").safe_dump(cfg))
     assert mod.main([str(SUBSET), "--check", str(f)]) == 1
+
+
+def test_every_region_scoring_file_loads_from_the_repo():
+    """The shipped region defaults load (priors included), so `headroom run --region
+    spp` cannot fail on a missing or invalid config file."""
+    import subprocess
+
+    for name, region in REGIONS.items():
+        if region.scoring_path is None:
+            continue
+        cfg = ScoringConfig.load(region.scoring_path)
+        if cfg.ranking == "ev":
+            assert cfg.get_priors and cfg.get_priors["version"]
+            assert not cfg.get_priors["version"].startswith("ev_priors_test")
+    spp = ScoringConfig.load(REGIONS["spp"].scoring_path)
+    assert spp.forward_rent["predictor"] == "months_binding_share"
+    if (REPO / ".git").exists():
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "config/get_priors.yaml",
+             "config/regions/spp.scoring.yaml"], cwd=REPO, capture_output=True)
+        assert tracked.returncode == 0, tracked.stderr.decode()
+
+
+@pytest.mark.skipif(not LIVE.exists(), reason="the pinned live snapshot is not on this machine")
+def test_committed_forward_rent_matches_the_live_snapshot():
+    spec = importlib.util.spec_from_file_location("bt", REPO / "scripts" / "backtest_forward_rent.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main([str(LIVE), "--check", str(SPP_SCORING)]) == 0

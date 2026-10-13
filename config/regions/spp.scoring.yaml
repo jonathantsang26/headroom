@@ -1,44 +1,70 @@
 # SPP scoring: the default for `headroom run --region spp` (RegionConfig.scoring_path).
 # config/scoring.yaml stays the fixture default and is unchanged.
 
-# The shortlist is ranked by the expected net value of each flowgate's best GET
-# (model/ev.py) under the cited priors in config/get_priors.yaml. The composite below
-# is still computed and exported as a diagnostic, with its own rank stability
+# The shortlist is ranked by the mean expected net value of each flowgate's best GET
+# (model/ev.py) under the cited priors in config/get_priors.yaml (docs/GET_PRIORS.md),
+# with forward rent calibrated on held-out 2025 months (forward_rent below). The
+# composite is still computed and exported as a diagnostic, with its own rank stability
 # (p_top_k_composite).
 ranking: ev
 get_priors: config/get_priors.yaml
 
+# Weights are identical to config/scoring.yaml (not retuned).
 weights:            # must sum to 1.0; order fixes RNG consumption
-  rent: 0.35                # observed DA congestion $ (SPP congestion by constraint)
+  rent: 0.25                # observed DA congestion $ (SPP congestion by constraint)
   loading: 0.20             # unobserved for SPP (element locations are CEII)
   persistence: 0.15         # binding hours
   demand_pressure: 0.15     # unobserved for SPP (needs element location)
-  planning: 0.15            # unobserved for SPP (ITP needs are CEII/PDF)
-  cost_of_inaction: 0.0     # rent x hours/8760: rent already sums over binding hours, so
-                            # weighting it would count binding hours a third time. Still
-                            # computed and exported (sig_cost_of_inaction).
+  planning: 0.15            # unobserved for SPP (no keyed public plan source)
+  cost_of_inaction: 0.10    # recurring rent (below): hours do not enter it
+definitions:
+  cost_of_inaction: recurring_rent   # annual congestion $ minus the largest month; the
+                                     # fixture definition (rent x hours/8760) would count
+                                     # binding hours a third time
 
-# References: p99 (numpy linear) of each raw signal's expected value over the scored
-# flowgates where it is observed, 4 significant figures, from the pinned snapshot
-# below via scripts/derive_scoring_refs.py. Not tuned. Signals without an observed SPP
-# population keep the fixture values (they normalize nothing here and must be > 0).
+# References follow the rule below, from the pinned snapshot's congestion table, via
+# scripts/derive_scoring_refs.py (check with --check this file). Not tuned. A run whose
+# congestion table differs from congestion_sha256 fails until they are re-derived.
+# Signals without an observed SPP population keep the fixture values (inert, > 0).
 references:
   rent_ref_musd: 22.44
   persist_ref_hours: 1007.0
-  coi_ref_musd: 1.949
+  coi_ref_musd: 11.87
   demand_ref_mw: 1000.0
   planning_cost_ref_musd: 200.0
   loading_ref: 1.0
 reference_rule:
-  rule: "p99 (numpy linear) of each raw signal's expected value over scored flowgates where the signal is observed, 4 significant figures"
-  derived_from_snapshot: "2026-10-13"
-  snapshot_manifest_sha256: "e2979f384497d264430b88f95b6c427a93d271269f6dafd1aef245c822f0d6fa"
+  rule: "p99 (numpy linear) of each raw signal's expected value over scored flowgates where the signal is observed (unobserved excluded, observed zeros included), 4 significant figures; cost_of_inaction per `definitions`"
+  quantile: 0.99
+  derived_from_snapshot: "2026-10-13.r2"   # the same congestion bytes as 2026-10-13
+  snapshot_manifest_sha256: "398fdf2da90d47505d7134338484874c6cb423641e1add2b51c5919de4486da7"
+  congestion_sha256: "065c7b603982f5f9e04a581bf6521df91d531ce932087bda0f12d02866a119ad"
+  coi_definition: recurring_rent
   n_rent: 2054
   n_hours: 2072
+  n_coi: 2054
   script: scripts/derive_scoring_refs.py
+
+# EV forward rent (model/forward.py, docs/FORWARD_RENT.md): each draw's rent is the 2025
+# rent x months_binding/12 x eps, eps from the leaders' realized/predicted ratios in
+# held-out-month splits of 2025. Derived by scripts/backtest_forward_rent.py (check with
+# --check this file); not tuned. Held-out capture of the top 5% (of the best possible):
+#   annual dollars       H1->H2: 0.561, H2->H1: 0.294, odd->even: 0.855, even->odd: 0.840; mean 0.638
+#   months-binding share H1->H2: 0.552, H2->H1: 0.352, odd->even: 0.900, even->odd: 0.851; mean 0.664
+forward_rent:
+  predictor: months_binding_share
+  ratio_quantiles: {"0": 0.0, "0.05": 0.0, "0.1": 0.000124, "0.25": 0.235, "0.5": 0.758, "0.75": 1.47, "0.9": 2.71, "0.95": 3.7, "0.99": 8.4, "1": 8.4}
+  ratio_mean: 1.22
+  rule: "within-year splits (H1->H2, H2->H1, odd->even, even->odd); predictor with the highest mean held-out capture at top 5%; eps = p0..p99 of the leaders' system-normalized realized/predicted ratios, 3 significant figures, p1 = p99"
+  derived_from_snapshot: "2026-10-13.r2"
+  cbc_raw_sha256: "83d4dd3dda66f7ee8850c6e44c4e1aa2fbefa97c740149c1f531b30ad077d139"
+  n_flowgates_with_rent: 2072
+  script: scripts/backtest_forward_rent.py
 
 stability:
   draws: 10000
-  top_fraction: 0.05   # shortlist = top 5% of flowgates (k ~ 104 of 2,072): an actionable
-                       # list; the fixture file keeps 0.25 (k floors to 1 at small N)
+  # Shortlist = top 5% (k ~ 104 of 2,072). Under EV ranking many flowgates have no
+  # cost-effective GET (best EV exactly 0); a top quarter (k = 518) would fill partly
+  # with them by tie-breaking. The fixture file keeps 0.25.
+  top_fraction: 0.05
   seed: 20260630
