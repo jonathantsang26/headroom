@@ -22,8 +22,26 @@ def test_replay_command_writes_verified_internal_artifacts(tmp_path, capsys):
     assert replay_manifest["output_sha256"] == original.manifest["output_sha256"]
     assert replay_manifest["inputs"] == original.manifest["inputs"]
     assert replay_manifest["public_only"] is False
-    assert "Historical replay verified" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "Historical replay verified" in printed and "identical artifacts: scores_json" in printed
     assert not (out / "run_manifest.json").exists()
+
+
+def test_replay_fails_when_the_artifacts_differ(tmp_path, capsys):
+    result = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=100))
+    original = deliver(result, tmp_path / "original")
+    manifest = json.loads(open(original.paths["manifest"]).read())
+    manifest["outputs"]["csv"]["sha256"] = "0" * 64  # the recorded CSV was something else
+    path = tmp_path / "edited.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit) as exc:
+        main(["reproduce", "--manifest", str(path), "--out", str(tmp_path / "replay")])
+    assert exc.value.code == 1 and "artifacts differ" in capsys.readouterr().err
+    manifest["outputs"]["csv"]["sha256"] = original.manifest["outputs"]["csv"]["sha256"]
+    manifest["mode"] = "shareable"  # a recorded decision the replay does not reach
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit):
+        main(["reproduce", "--manifest", str(path), "--out", str(tmp_path / "replay2")])
 
 
 def test_replay_command_rejects_legacy_manifest_without_writing(tmp_path, capsys):

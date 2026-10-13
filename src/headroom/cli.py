@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import argparse
 
-from headroom.export import deliver
+import json
+from pathlib import Path
+
+from headroom.export import compare_replayed_outputs, deliver
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
+
+# Exit status 2: a live (non-synthetic) run whose export the publishable gate refused.
+GATE_REFUSED = 2
 
 
 def _run(args) -> int:
@@ -16,9 +22,13 @@ def _run(args) -> int:
 
 
 def _reproduce(args) -> int:
-    result = reproduce_from_manifest(args.manifest, data_dir=args.data_dir)
+    recorded = json.loads(Path(args.manifest).read_text())
+    result = reproduce_from_manifest(recorded, data_dir=args.data_dir)
     d = deliver(result, args.out)
-    print("Historical replay verified: inputs, runtime, and ranking match.")
+    compared = compare_replayed_outputs(recorded, d.manifest)
+    print("Historical replay verified: inputs, runtime, ranking and export decision match"
+          + (f"; identical artifacts: {', '.join(compared)}." if compared else
+             "; the recorded manifest has no artifact digests to compare."))
     return _report(result, d)
 
 
@@ -49,6 +59,8 @@ def _report(result, d) -> int:
         print("  (full notes in quality_report)")
     for key, path in d.paths.items():
         print(f"  {key}: {path}")
+    if not result.region.synthetic and d.mode != "shareable":
+        return GATE_REFUSED  # a live run that cannot be shared is a failure to automation
     return 0
 
 
@@ -56,7 +68,8 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="headroom", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    r = sub.add_parser("run", help="run the full pipeline and export the shortlist")
+    r = sub.add_parser("run", help="run the full pipeline and export the shortlist "
+                                   "(exit 2 if a live run's export is not shareable)")
     r.add_argument("--region", default="spp-synth")
     r.add_argument("--out", default="data/processed")
     r.add_argument("--scoring", default=None, help="path to scoring.yaml override")

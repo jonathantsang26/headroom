@@ -14,7 +14,10 @@ _DEPENDENCIES = ("numpy", "pydantic", "PyYAML")
 
 
 def _source_sha256(package_root: Path) -> str:
-    required = [package_root / "__init__.py", package_root / "pipeline.py"]
+    # export.py decides shareable vs internal (with gate.py), so it is part of what a
+    # replay must match; the CLI, map and MCP server are not.
+    required = [package_root / "__init__.py", package_root / "pipeline.py",
+                package_root / "export.py"]
     required.extend(package_root / directory / "__init__.py" for directory in _SOURCE_DIRS)
     for path in required:
         if not path.is_file():

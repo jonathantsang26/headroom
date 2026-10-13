@@ -5,7 +5,12 @@
 # FAIL-CLOSED: `publishable` defaults to False when absent (see sources/registry.py),
 # so a source is non-publishable until proven otherwise.
 #
-# `publishable: true`  -> public data, may appear in any shareable export.
+# `publishable: true`  -> public data, may appear in a shareable export, subject to
+#                          its terms (compliance.basis). Every live export lists the
+#                          terms of each source it used in NOTICE.md and in
+#                          quality_report.json `attribution`. Publishable is not
+#                          "unrestricted": SPP's terms, for one, allow non-commercial
+#                          use with citation and need SPP's authorization otherwise.
 # `publishable: false` -> may be fetched/stored and used INTERNALLY, but the
 #                          lineage-walk export gate refuses to emit any value whose
 #                          provenance transitively touches it under public_only=True.
@@ -86,7 +91,7 @@ sources:
     compliance:
       publishable: true
       basis: "Hourly day-ahead binding-constraint shadow prices posted publicly on the SPP Portal. SPP Terms of Use (https://www.spp.org/terms-conditions/): non-commercial copying permitted with citation to SPP; commercial use requires SPP's prior written authorization."
-      notes: "Core §6.1 signal. SPP posts shadow prices, not $; rent = sum|SP| x (unpublished) rating. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
+      notes: "Core §6.1 signal: binding hours and shadow prices. SPP posts shadow prices here, not $; rent comes from spp_congestion_by_constraint. SPP terms of use (spp.org/terms-conditions): non-commercial copying and distribution permitted with citation; commercial use requires prior written authorization from SPP."
 
   - name: spp_congestion_by_constraint
     bucket: b

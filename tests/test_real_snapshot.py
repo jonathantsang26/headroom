@@ -82,6 +82,11 @@ def test_real_subset_clears_the_gate_and_reports_its_gaps(tmp_path, monkeypatch,
     consulted = {a["source"] for a in qr["consulted_nothing_obtained"]}
     assert "spp_itp" in consulted and "spp_itp" not in sources  # planning is unobserved
     assert qr["tables"]["congestion"]["coverage"] == "partial"  # some flowgates lack $
+    notice = Path(d.paths["notice"]).read_text()
+    assert "Mode: **shareable**" in notice and "terms-conditions" in notice
+    assert "spp_tcr_funding" in notice and "## Caveats" in notice
+    assert d.manifest["outputs"]["notice"]["sha256"]
+    assert d.manifest["attribution"] == qr["attribution"]
     assert all("terms-conditions" in a["basis"] for name, a in sources.items() if name.startswith("spp_"))
     assert qr["dc_screen"]["status"].startswith("not_run")
     assert qr["unobserved_weight_all"] == pytest.approx(0.5)  # loading+demand+planning
@@ -128,6 +133,14 @@ def test_a_non_publishable_contributor_blocks_the_shareable_export(tmp_path, mon
     snap = _copy_with(tmp_path, synthetic_contributor)
     d = deliver(run_pipeline(_region(monkeypatch, snap), scoring=scoring), tmp_path / "out")
     assert d.mode == "internal-synthetic" and "buses:synthetic_fixture" in d.blocked_tables
+    assert "not for sharing" in Path(d.paths["notice"]).read_text()
+
+    # the CLI says so in its exit status: a live run that cannot be shared is a failure
+    from headroom import cli
+
+    monkeypatch.setattr(cli, "run_pipeline", lambda *a, **k: run_pipeline(
+        _region(monkeypatch, snap), scoring=scoring))
+    assert cli.main(["run", "--region", "spp-real-subset", "--out", str(tmp_path / "cli")]) == 2
 
 
 def test_column_sources_must_be_table_stamps_and_loader_stamped(tmp_path, monkeypatch, scoring):

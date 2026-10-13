@@ -16,6 +16,7 @@ def package_root(tmp_path):
     root.mkdir()
     (root / "__init__.py").write_text('__version__ = "0.0.0"\n')
     (root / "pipeline.py").write_text("def run_pipeline(): pass\n")
+    (root / "export.py").write_text("def deliver(): pass\n")
     for directory in runtime._SOURCE_DIRS:
         source_dir = root / directory
         source_dir.mkdir()
@@ -51,7 +52,7 @@ def test_pipeline_source_changes_alter_identity(package_root, change):
 def test_caches_ui_and_other_unrelated_files_do_not_change_identity(package_root):
     original = runtime._source_sha256(package_root)
     excluded = (
-        "app/streamlit_app.py", "mcp/server.py", "cli.py", "export.py",
+        "app/streamlit_app.py", "mcp/server.py", "cli.py",
         "model/__pycache__/score.py", "model/__pycache__/score.cpython-311.pyc",
         "model/notes.txt", ".git/config",
     )
@@ -62,7 +63,13 @@ def test_caches_ui_and_other_unrelated_files_do_not_change_identity(package_root
     assert runtime._source_sha256(package_root) == original
 
 
-@pytest.mark.parametrize("relative", ["pipeline.py", "__init__.py", "model/__init__.py"])
+def test_export_decision_code_is_part_of_the_identity(package_root):
+    original = runtime._source_sha256(package_root)
+    (package_root / "export.py").write_text("def deliver(): return 'shareable'\n")
+    assert runtime._source_sha256(package_root) != original
+
+
+@pytest.mark.parametrize("relative", ["pipeline.py", "export.py", "__init__.py", "model/__init__.py"])
 def test_missing_required_source_fails_clearly(package_root, relative):
     (package_root / relative).unlink()
     with pytest.raises(RuntimeError, match="Required pipeline source is missing"):

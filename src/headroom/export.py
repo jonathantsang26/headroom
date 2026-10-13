@@ -220,6 +220,55 @@ def _materialize_parquet(json_path: Path, parquet_path: Path) -> str | None:
         tmp.unlink(missing_ok=True)
 
 
+def build_notice(result: PipelineResult, mode: str) -> str:
+    """NOTICE.md beside every export: what the files are, the terms of every source
+    the run used, and the caveats a reader needs before using the numbers."""
+    qr = result.quality_report
+    ident = result.input_identity
+    snap = ident.get("snapshot_id") or result.region.name
+    lines = [
+        f"# Headroom export: {result.region.name} ({result.region.rto})",
+        "",
+        f"- Mode: **{mode}**" + ("" if mode == "shareable" else
+                                 " (not for sharing: the publishable gate refused it)"),
+        f"- Input snapshot: `{snap}`"
+        + (f" (manifest sha256 `{ident['snapshot_manifest_sha256'][:16]}…`)"
+           if ident.get("snapshot_manifest_sha256") else ""),
+        f"- Ranking: {result.scoring.ranking}; {result.model.n_constraints} flowgates, "
+        f"{len(result.model.shortlist)} corridors, k = {result.model.k}",
+        "",
+        "`shortlist.csv` and `scores.json` hold one row per flowgate in rank order; "
+        "`shortlist.json` holds one row per corridor. `run_manifest.json` records the "
+        "inputs, code, scoring and a sha256 of every file here.",
+    ]
+    if result.region.synthetic:
+        lines += ["", "**Synthetic fixtures. Not a real result; never share.**"]
+    attribution = qr.get("attribution") or []
+    if attribution:
+        lines += ["", "## Sources and terms", "",
+                  "Cite each source below. Using these files is subject to every "
+                  "source's terms; where a source restricts commercial use, so do "
+                  "these files.", ""]
+        for a in attribution:
+            lines.append(f"- **{a['source']}** `{a['source_version']}` "
+                         f"({', '.join(a.get('tables', []))}): {a['basis']}")
+    consulted = qr.get("consulted_nothing_obtained") or []
+    if consulted:
+        lines += ["", "Consulted, nothing obtained (their tables are unobserved): "
+                  + ", ".join(f"{a['source']} `{a['source_version']}`" for a in consulted)
+                  + "."]
+    ev = qr.get("ev")
+    caveats = list(qr.get("gaps") or [])
+    if ev:
+        caveats.insert(0, f"ev: priors {ev['priors_version']} (sha256 "
+                          f"{ev['priors_sha256'][:12]}). {ev['note']}")
+    if caveats:
+        lines += ["", "## Caveats", ""] + [f"- {c}" for c in caveats]
+    lines += ["", "A screening shortlist from public data, not an engineering study or "
+              "an investment recommendation. Full notes: `quality_report.json`."]
+    return "\n".join(lines) + "\n"
+
+
 def deliver(
     result: PipelineResult,
     out_dir: str | Path,
@@ -247,6 +296,7 @@ def deliver(
     quality_path = out / f"quality_report{suffix}.json"
     parquet_path = out / f"scores{suffix}.parquet"
     manifest_path = out / f"run_manifest{suffix}.json"
+    notice_path = out / f"NOTICE{suffix}.md"
 
     qr = result.quality_report
     manifest = build_run_manifest(
@@ -274,10 +324,13 @@ def deliver(
         "shortlist_json": _json_bytes(corridors),
         "csv": _csv_bytes(rows),
         "quality_report": _json_bytes(qr),
+        "notice": build_notice(result, mode).encode("utf-8"),
     }
+    if qr.get("attribution") is not None:
+        manifest["attribution"] = qr["attribution"]
     _json_bytes(manifest)
     names = {"scores_json": rows_json, "shortlist_json": shortlist_json, "csv": csv_path,
-             "quality_report": quality_path, "parquet": parquet_path}
+             "quality_report": quality_path, "notice": notice_path, "parquet": parquet_path}
     outputs = {key: _atomic_write(names[key], data) for key, data in blobs.items()}
     parquet_sha = _materialize_parquet(rows_json, parquet_path)
     if parquet_sha is not None:
@@ -294,6 +347,7 @@ def deliver(
         "csv": str(csv_path),
         "manifest": str(manifest_path),
         "quality_report": str(quality_path),
+        "notice": str(notice_path),
     }
     if parquet_sha is not None:
         paths["parquet"] = str(parquet_path)
@@ -302,6 +356,25 @@ def deliver(
         mode=mode, public_only=public_only, blocked=blocked, blocked_tables=blocked_tables,
         blocked_sources=blocked_sources, paths=paths, manifest=manifest,
     )
+
+
+# Artifacts a replay must reproduce byte for byte (Parquet bytes depend on DuckDB).
+REPLAY_COMPARED = ("scores_json", "shortlist_json", "csv", "quality_report", "notice")
+
+
+def compare_replayed_outputs(recorded: dict, replayed: dict) -> list[str]:
+    """Fail unless a replay reached the same export decision and wrote the same
+    artifact bytes as the recorded run; returns the artifacts compared."""
+    for key in ("mode", "public_only"):
+        if recorded.get(key) != replayed.get(key):
+            raise ValueError(f"Replay export {key} {replayed.get(key)!r} differs from the "
+                             f"recorded {recorded.get(key)!r}")
+    rec, new = recorded.get("outputs") or {}, replayed.get("outputs") or {}
+    compared = [k for k in REPLAY_COMPARED if k in rec]
+    differ = [k for k in compared if rec[k].get("sha256") != new.get(k, {}).get("sha256")]
+    if differ:
+        raise ValueError(f"Replayed artifacts differ from the recorded run: {differ}")
+    return compared
 
 
 def export_shareable_or_raise(result: PipelineResult, out_dir: str | Path) -> Delivery:
