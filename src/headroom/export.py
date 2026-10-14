@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -307,8 +308,10 @@ def _inputs_retrieved_at(result: PipelineResult) -> datetime:
 
 def _refuse_other_run(out: Path, manifest: dict) -> None:
     """An output directory holds one run: writing a different run's artifacts over
-    it (other inputs, ranking or export decision) needs overwrite=True."""
-    for existing in sorted(out.glob("run_manifest*.json")):
+    it (other inputs, ranking or export decision), or over artifacts no manifest
+    describes, needs overwrite=True."""
+    manifests = sorted(out.glob("run_manifest*.json"))
+    for existing in manifests:
         try:
             old = json.loads(existing.read_text())
         except (OSError, ValueError):
@@ -317,21 +320,23 @@ def _refuse_other_run(out: Path, manifest: dict) -> None:
             raise FileExistsError(
                 f"{out} already holds a different run ({existing.name}); write to a new "
                 "directory or pass --overwrite")
+    if not manifests:
+        orphans = [p.name for p in _artifact_files(out)]
+        if orphans:
+            raise FileExistsError(
+                f"{out} holds run artifacts with no manifest ({', '.join(orphans[:3])}); "
+                "write to a new directory or pass --overwrite")
 
 
 _ARTIFACTS = ("scores", "shortlist", "quality_report", "NOTICE", "run_manifest")
 _SUFFIXES = ("", ".INTERNAL", ".INTERNAL.synthetic")
 
 
-def _remove_previous_run(out: Path) -> None:
-    """--overwrite replaces the run in `out`: its artifacts under any mode's name go
-    (the manifest first, so no manifest ever describes a half-replaced set)."""
-    for suffix in _SUFFIXES:
-        (out / f"run_manifest{suffix}.json").unlink(missing_ok=True)
-    for stem in _ARTIFACTS:
-        for suffix in _SUFFIXES:
-            for ext in (".json", ".csv", ".parquet", ".md"):
-                (out / f"{stem}{suffix}{ext}").unlink(missing_ok=True)
+def _artifact_files(out: Path) -> list[Path]:
+    """Every file in `out` named like an export artifact, under any mode's suffix."""
+    names = {f"{stem}{suffix}{ext}" for stem in _ARTIFACTS for suffix in _SUFFIXES
+             for ext in (".json", ".csv", ".parquet", ".md")}
+    return sorted(p for p in out.iterdir() if p.name in names and p.is_file())
 
 
 def _export_mode(result: PipelineResult, refused: bool) -> tuple[str, bool, str]:
@@ -431,16 +436,29 @@ def deliver(
         manifest["outputs"] = {
             key: {"path": names[key].name, "sha256": digest} for key, digest in outputs.items()
         }
-        manifest_bytes = _json_bytes(manifest)
-        if overwrite:
-            _remove_previous_run(out)
+        staged_manifest = staging / manifest_path.name
+        _atomic_write(staged_manifest, _json_bytes(manifest))
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    # Swap. Old manifests go first, so no manifest ever describes a mixed set; each
+    # file then replaces its namesake atomically; the manifest lands last; files of an
+    # earlier run that this run does not write (another mode's names) go after.
+    try:
+        for old in out.glob("run_manifest*.json"):
+            old.unlink()
         for key in outputs:
             os.replace(staged[key], names[key])
-        _atomic_write(manifest_path, manifest_bytes)
-    finally:
-        for leftover in staging.iterdir():
-            leftover.unlink()
+        os.replace(staged_manifest, manifest_path)
+        keep = {names[key].name for key in outputs} | {manifest_path.name}
+        for stale in _artifact_files(out):
+            if stale.name not in keep:
+                stale.unlink()
         staging.rmdir()
+    except BaseException as exc:
+        raise RuntimeError(
+            f"export interrupted while moving files into {out}; the new run's remaining "
+            f"files, manifest included, are kept in {staging}") from exc
 
     paths = {
         "scores_json": str(rows_json),

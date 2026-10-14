@@ -207,3 +207,45 @@ def test_a_refused_run_on_real_data_is_labelled_internal_not_synthetic():
     assert _export_mode(real, refused=True) == ("internal", False, ".INTERNAL")
     assert _export_mode(fixture, refused=True) == ("internal-synthetic", False, ".INTERNAL.synthetic")
     assert _export_mode(real, refused=False) == ("shareable", True, "")
+
+
+def test_an_interrupted_move_keeps_the_new_run_in_staging_and_says_where(tmp_path, monkeypatch):
+    import os
+    from dataclasses import replace
+
+    from headroom import export
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    export.deliver(run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60)), tmp_path)
+    real_replace, moves = os.replace, []
+
+    def flaky(src, dst):
+        if Path(dst).parent == tmp_path:  # a move into the out dir (not a staging write)
+            moves.append(dst)
+            if len(moves) == 2:
+                raise OSError("interrupted")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(export.os, "replace", flaky)
+    second = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=70, seed=3))
+    with pytest.raises(RuntimeError, match="kept in .*staging") as exc:
+        export.deliver(second, tmp_path, overwrite=True)
+    staging = Path(str(exc.value).rsplit("kept in ", 1)[1])
+    assert staging.is_dir() and any(p.name.startswith("run_manifest") for p in staging.iterdir())
+    assert not list(tmp_path.glob("run_manifest*.json"))  # no manifest over a mixed set
+
+
+def test_artifacts_without_a_manifest_are_not_silently_joined(tmp_path):
+    from dataclasses import replace
+
+    from headroom.export import deliver
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    (tmp_path / "scores.INTERNAL.parquet").write_bytes(b"left over")
+    run = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60))
+    with pytest.raises(FileExistsError, match="no manifest"):
+        deliver(run, tmp_path)
+    deliver(run, tmp_path, overwrite=True)
+    assert not (tmp_path / "scores.INTERNAL.parquet").exists()

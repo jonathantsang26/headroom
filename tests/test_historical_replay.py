@@ -351,8 +351,8 @@ def test_replayed_fabricated_inputs_remain_blocked_for_public_export(request, fi
     assert delivery.mode == want
     assert delivery.public_only is False
     assert set(delivery.blocked) == {score.constraint_id for score in replay.model.scores}
-    suffix = ".INTERNAL.synthetic" if replay.region.synthetic else ".INTERNAL."
-    assert all(suffix in Path(path).name for path in delivery.paths.values())
+    label = ["INTERNAL", "synthetic"] if replay.region.synthetic else ["INTERNAL"]
+    assert all(Path(path).name.split(".")[1:-1] == label for path in delivery.paths.values())
     for score in replay.model.scores:
         with pytest.raises(PublishabilityError):
             assert_publishable(score.composite.lineage_id, replay.store, replay.registry)

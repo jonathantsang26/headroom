@@ -42,7 +42,7 @@ def build_run_manifest(
         "schema_version": RUN_MANIFEST_VERSION,
         "run_label": run_label,
         "region": region,
-        "mode": mode,  # "shareable" | "internal-synthetic"
+        "mode": mode,  # "shareable" | "internal" | "internal-synthetic"
         "generated_at": generated_at.isoformat(),
         "public_only": public_only,
         "pinned": {"pudl_release": PUDL_RELEASE},

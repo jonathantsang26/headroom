@@ -280,8 +280,33 @@ def test_sigterm_removes_staging_and_stale_staging_can_be_cleaned(root, monkeypa
     assert not list(root.glob(f".{DAY}-*"))
     assert signal.getsignal(signal.SIGTERM) is not builder._terminate  # restored
 
-    (root / f".{DAY}-killed").mkdir()  # what SIGKILL leaves
+    killed = root / f".{DAY}-killed01"  # what SIGKILL leaves (no lock held)
+    killed.mkdir()
+    (root / f".{DAY}-killed01.lock").touch()
     (root / ".current-tmp").mkdir()  # not a staging directory
-    assert builder._stale_staging() == [root / f".{DAY}-killed"]
+    assert builder._stale_staging() == [killed]
     assert builder.main(["--clean-staging"]) == 0
-    assert not (root / f".{DAY}-killed").exists() and (root / ".current-tmp").exists()
+    assert not killed.exists() and not (root / f".{DAY}-killed01.lock").exists()
+    assert (root / ".current-tmp").exists()
+
+
+def test_clean_staging_never_touches_a_running_builds_staging(root):
+    import os
+    import time
+
+    live = root / f".{DAY}-running1"
+    live.mkdir()
+    held = builder._hold_lock(builder._lock_path(live))  # a build in progress
+    young = root / f".{DAY}-justmade"  # created, lock not taken yet
+    young.mkdir()
+    old = root / f".{DAY}-oldnolck"  # an old build from before locks existed
+    old.mkdir()
+    past = time.time() - 3600
+    os.utime(old, (past, past))
+    try:
+        assert builder._stale_staging() == [old]
+        assert builder.main(["--clean-staging"]) == 0
+        assert live.exists() and young.exists() and not old.exists()
+    finally:
+        held.close()
+    assert builder._stale_staging() == [live]  # its build is gone: the lock is free

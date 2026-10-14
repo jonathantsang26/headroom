@@ -184,6 +184,7 @@ def run_model(
                 signal_coverage=coverage_by_cid[cid],
                 get_basis=get_basis(c, radial=radial, loading_observed=loading_observed,
                                     breached_hours=breached, get=get),
+                get_rule=get,  # the evidence rule's pick, under every ranking
             )
         )
 
@@ -226,7 +227,6 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
                  forward=cfg.forward_rent)
     for s in scores:
         cid = s.constraint_id
-        s.get_rule = s.recommended_get
         s.ev = res.ev.get(cid)
         s.ev_mean = res.ev_mean.get(cid)
         s.get_probabilities = res.p_best.get(cid, {})

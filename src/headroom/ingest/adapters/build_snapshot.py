@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import shutil
 import signal
 import sys
+import time
 import tempfile
 from datetime import date
 from pathlib import Path
@@ -81,15 +83,44 @@ def activate_snapshot(snapshot_dir: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-_STAGING = re.compile(r"^\.\d{4}-\d{2}-\d{2}(\.r\d+)?-")
+# mkdtemp(prefix=".<snapshot>-") adds 8 characters
+_STAGING = re.compile(r"^\.\d{4}-\d{2}-\d{2}(\.r\d+)?-[A-Za-z0-9_]{8}$")
+_UNLOCKED_GRACE_S = 300  # a staging dir younger than this may not hold its lock yet
+
+
+def _lock_path(staging: Path) -> Path:
+    return staging.with_name(staging.name + ".lock")
+
+
+def _hold_lock(path: Path):
+    """An exclusive lock a running build holds on its staging (released at exit, even
+    on SIGKILL, so a killed build's lock is free)."""
+    fh = open(path, "a")
+    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fh
+
+
+def _is_live(staging: Path) -> bool:
+    lock = _lock_path(staging)
+    if not lock.exists():
+        return time.time() - staging.stat().st_mtime < _UNLOCKED_GRACE_S
+    try:
+        with open(lock, "a") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fh, fcntl.LOCK_UN)
+        return False
+    except BlockingIOError:
+        return True
 
 
 def _stale_staging() -> list[Path]:
-    """Hidden staging directories a killed build left behind (SIGKILL, power loss)."""
+    """Hidden staging directories no running build holds: what failed or killed builds
+    left behind."""
     if not SPP_ROOT.is_dir():
         return []
     return sorted(p for p in SPP_ROOT.iterdir()
-                  if _STAGING.match(p.name) and p.is_dir() and not p.is_symlink())
+                  if _STAGING.match(p.name) and p.is_dir() and not p.is_symlink()
+                  and not _is_live(p))
 
 
 def _terminate(signum, frame):  # SIGTERM: clean up like Ctrl-C does
@@ -150,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.clean_staging:
         for stale in _stale_staging():
             shutil.rmtree(stale)
+            _lock_path(stale).unlink(missing_ok=True)
             print(f"[removed] {stale.name}")
         return 0
     source = None
@@ -192,15 +224,16 @@ def main(argv: list[str] | None = None) -> int:
     SPP_ROOT.mkdir(parents=True, exist_ok=True)
     stale = _stale_staging()
     if stale:
-        print(f"[warning] {len(stale)} staging directories from earlier failed or killed "
-              f"builds ({', '.join(p.name for p in stale)}); --clean-staging removes them",
-              file=sys.stderr)
+        print(f"[warning] {len(stale)} staging directories that no running build holds "
+              f"({', '.join(p.name for p in stale)}): failed builds kept for inspection or "
+              "killed builds; --clean-staging removes them", file=sys.stderr)
     staged = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=SPP_ROOT))
+    lock = _hold_lock(_lock_path(staged))
     previous_term = signal.signal(signal.SIGTERM, _terminate)
-    (staged / "raw").mkdir()
-    (staged / "normalized").mkdir()
 
     try:
+        (staged / "raw").mkdir()
+        (staged / "normalized").mkdir()
         if source is not None:
             raw = _reuse_raw(source, staged)
             update_manifest(staged, snapshot_date=args.date, revision=args.revision, raw=raw,
@@ -228,7 +261,13 @@ def main(argv: list[str] | None = None) -> int:
         # own staging directory
         if staged.exists():
             shutil.rmtree(staged)
-        print(f"[INTERRUPTED] removed staging {staged.name}; current unchanged", file=sys.stderr)
+            print(f"[INTERRUPTED] removed staging {staged.name}; current unchanged",
+                  file=sys.stderr)
+        else:  # interrupted after the build became the dated snapshot
+            current = SPP_ROOT / "current"
+            target = current.readlink() if current.is_symlink() else None
+            print(f"[INTERRUPTED] after {snap.name} was built (current -> {target})",
+                  file=sys.stderr)
         return 130
     except Exception as exc:
         retained = staged if staged.exists() else snap
@@ -236,6 +275,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     finally:
         signal.signal(signal.SIGTERM, previous_term)
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        lock.close()
+        _lock_path(staged).unlink(missing_ok=True)
 
     if args.no_activate:
         current = SPP_ROOT / "current"

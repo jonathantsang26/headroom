@@ -212,6 +212,11 @@ def test_rows_carry_a_caution_column_and_the_evidence_rule_by_name(tmp_path, mon
     d = deliver(run_pipeline(_region(monkeypatch, SUBSET), scoring=scoring), tmp_path / "out")
     rows = list(csv.DictReader(open(d.paths["csv"])))
     assert {"caution", "evidence_rule_get"} <= set(rows[0]) and "get_rule" not in rows[0]
+    gets = {"Dynamic Line Rating", "Advanced Power Flow Control", "Topology Optimization",
+            "Combination"}
+    assert all(r["evidence_rule_get"] in gets for r in rows)
+    # composite ranking: the evidence rule is the recommendation
+    assert all(r["evidence_rule_get"] == r["recommended_get"] for r in rows)
     for r in rows:
         ends = r["monitored_facility"][3:].split(" - ") if r["monitored_facility"].startswith("LN ") else []
         same = len(ends) == 2 and ends[0].strip() == ends[1].strip()

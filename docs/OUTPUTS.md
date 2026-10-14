@@ -2,9 +2,11 @@
 
 `headroom run --out DIR` writes one run into `DIR`. A shareable run's files have no
 suffix. A run the publishable gate refused gets `.INTERNAL` in every name, or
-`.INTERNAL.synthetic` when the region is a synthetic fixture. Files are written into a
-hidden staging folder first, then moved into place with the manifest last, so a crash
-mid-export leaves an earlier run untouched.
+`.INTERNAL.synthetic` when the region is a synthetic fixture. Files, the manifest included, are written into a hidden staging folder first. A
+failure before they are moved leaves an earlier run untouched. The move itself then
+removes the old manifest, replaces each file atomically, and adds the new manifest
+last. If it is interrupted, the folder holds no manifest (MCP refuses it), and the
+error names the staging folder that keeps the new run's remaining files.
 `DIR` holds one run: writing a different run there needs `--overwrite`.
 
 | File | One row per | What it is |
