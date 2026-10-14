@@ -52,9 +52,9 @@ file and column means: [OUTPUTS.md](docs/OUTPUTS.md).
 
 ## Status
 Verified on 2026-10-13. `headroom run --region spp` on snapshot `2026-10-13.r2`, at
-commit `7d5a4d3`, writes a **shareable** export: the unchanged publishable gate passed
+commit `9c6fce4`, writes a **shareable** export: the unchanged publishable gate passed
 all 2,072 scores, all nine input tables and every value in the lineage graph.
-`headroom reproduce` rebuilds the ranking (digest `a1119a03…`), the export decision,
+`headroom reproduce` rebuilds the ranking (digest `a6750ade…`), the export decision,
 and byte-identical scores, shortlist, CSV, quality report and NOTICE. Later commits
 replay it as long as they do not change the hashed pipeline code. Each export carries
 `NOTICE.md`, which lists every source used with its terms. SPP's terms allow
@@ -105,7 +105,9 @@ The weighted composite is still exported as a diagnostic.
 | 10 | LN STONEWSW - TUPELO2 | $28.6M | 7 | 0.20 (−0.23 to 1.19) | DLR | 0.42 |
 
 All ten bind under N-1 contingencies. A negative p5 means the deployment loses money in
-that draw.
+that draw. #5 has the same station name at both ends. It may be a bus tie or an
+intra-station segment, where no GET applies, so its `get_basis` carries a caution. The
+same is true of 16 scored "lines" in all.
 
 - **Value.** 53 of 2,054 flowgates (48 corridors) have a GET worth deploying. 47 of
   them exceed $10k/yr, 20 exceed $100k/yr and 4 exceed $1M/yr. The total is
