@@ -113,7 +113,7 @@ def test_one_synthetic_stamped_table_blocks_the_shareable_export(tmp_path, monke
     mpath.write_text(json.dumps(manifest))
     result = run_pipeline(_region(monkeypatch, snap), scoring=scoring)
     d = deliver(result, tmp_path / "out")
-    assert d.mode == "internal-synthetic"
+    assert d.mode == "internal"
     assert table in d.blocked_tables  # even when no score depends on the table
     assert not (tmp_path / "out" / "shortlist.csv").exists()
 
@@ -134,7 +134,7 @@ def test_a_non_publishable_contributor_blocks_the_shareable_export(tmp_path, mon
 
     snap = _copy_with(tmp_path, synthetic_contributor)
     d = deliver(run_pipeline(_region(monkeypatch, snap), scoring=scoring), tmp_path / "out")
-    assert d.mode == "internal-synthetic" and "buses:synthetic_fixture" in d.blocked_tables
+    assert d.mode == "internal" and "buses:synthetic_fixture" in d.blocked_tables
     assert "not for sharing" in Path(d.paths["notice"]).read_text()
 
     # the CLI says so in its exit status: a live run that cannot be shared is a failure
@@ -173,14 +173,14 @@ def test_a_non_publishable_leaf_anywhere_in_the_store_blocks_the_export(tmp_path
         value=1.0, lineage_id="obs:side_channel", stamp=SourceStamp(
             "synthetic_fixture", "synthetic", datetime(2026, 10, 13, tzinfo=timezone.utc))))
     d = deliver(result, tmp_path / "a")
-    assert d.mode == "internal-synthetic" and d.blocked == [] and d.blocked_tables == []
+    assert d.mode == "internal" and d.blocked == [] and d.blocked_tables == []
     assert d.blocked_sources == ["synthetic_fixture"]
 
     clean = run_pipeline(_region(monkeypatch, SUBSET), scoring=scoring)
     clean.store.add(derived_range(lo=0, expected=1, hi=2, basis="test", stage="test",
                                   lineage_id="derived:orphan", inputs=["obs:missing"]))
     d = deliver(clean, tmp_path / "b")
-    assert d.mode == "internal-synthetic" and d.blocked_sources[0].startswith("unresolved inputs")
+    assert d.mode == "internal" and d.blocked_sources[0].startswith("unresolved inputs")
 
 
 def test_stamps_must_match_todays_pins(tmp_path, monkeypatch, scoring):
@@ -203,4 +203,16 @@ def test_a_stamped_derived_value_cannot_launder_its_source(tmp_path, monkeypatch
                            provider="synthetic_fixture", source_version="synthetic",
                            lineage_id="laundered", inputs=[public_leaf]))
     d = deliver(result, tmp_path / "out")
-    assert d.mode == "internal-synthetic" and "synthetic_fixture" in d.blocked_sources
+    assert d.mode == "internal" and "synthetic_fixture" in d.blocked_sources
+
+
+def test_rows_carry_a_caution_column_and_the_evidence_rule_by_name(tmp_path, monkeypatch, scoring):
+    import csv
+
+    d = deliver(run_pipeline(_region(monkeypatch, SUBSET), scoring=scoring), tmp_path / "out")
+    rows = list(csv.DictReader(open(d.paths["csv"])))
+    assert {"caution", "evidence_rule_get"} <= set(rows[0]) and "get_rule" not in rows[0]
+    for r in rows:
+        ends = r["monitored_facility"][3:].split(" - ") if r["monitored_facility"].startswith("LN ") else []
+        same = len(ends) == 2 and ends[0].strip() == ends[1].strip()
+        assert (r["caution"] == "same_station_ends") == same

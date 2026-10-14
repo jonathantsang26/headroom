@@ -114,7 +114,7 @@ def test_coverage_is_exported_and_fabricated_inputs_stay_blocked(tmp_path, monke
         "queue": {"coverage": "unobserved", "note": "not obtained"},
     })
     d = deliver(run_pipeline(region), tmp_path / "out")
-    assert d.mode == "internal-synthetic"
+    assert d.mode == "internal"
     assert d.manifest["coverage"]["tables"]["queue"] == "unobserved"
     qr = json.loads(Path(d.paths["quality_report"]).read_text())
     assert qr["signal_coverage"]["demand_pressure"] == {"unobserved": 10}

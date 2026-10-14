@@ -173,3 +173,37 @@ def test_mcp_top_flowgates_returns_dicts_in_rank_order(tmp_path):
     rows = top_flowgates_rows(d.paths["parquet"], limit=3)
     assert [r["rank"] for r in rows] == [1, 2, 3]
     assert all(isinstance(r, dict) and r["constraint_id"] for r in rows)
+
+
+def test_a_crash_while_writing_leaves_the_previous_run_whole(tmp_path, monkeypatch):
+    """--overwrite touches nothing of the earlier run until the whole new set is written."""
+    from dataclasses import replace
+
+    from headroom import export
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    first = export.deliver(run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60)), tmp_path)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+
+    def crash(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(export, "_materialize_parquet", crash)
+    second = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=70, seed=3))
+    with pytest.raises(OSError, match="disk full"):
+        export.deliver(second, tmp_path, overwrite=True)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before  # no staging left
+    assert first.manifest["output_sha256"]
+
+
+def test_a_refused_run_on_real_data_is_labelled_internal_not_synthetic():
+    from types import SimpleNamespace
+
+    from headroom.export import _export_mode
+
+    real = SimpleNamespace(region=SimpleNamespace(synthetic=False))
+    fixture = SimpleNamespace(region=SimpleNamespace(synthetic=True))
+    assert _export_mode(real, refused=True) == ("internal", False, ".INTERNAL")
+    assert _export_mode(fixture, refused=True) == ("internal-synthetic", False, ".INTERNAL.synthetic")
+    assert _export_mode(real, refused=False) == ("shareable", True, "")

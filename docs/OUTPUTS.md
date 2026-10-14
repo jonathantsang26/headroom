@@ -1,7 +1,10 @@
 # Outputs
 
 `headroom run --out DIR` writes one run into `DIR`. A shareable run's files have no
-suffix. A run the publishable gate refused gets `.INTERNAL.synthetic` in every name.
+suffix. A run the publishable gate refused gets `.INTERNAL` in every name, or
+`.INTERNAL.synthetic` when the region is a synthetic fixture. Files are written into a
+hidden staging folder first, then moved into place with the manifest last, so a crash
+mid-export leaves an earlier run untouched.
 `DIR` holds one run: writing a different run there needs `--overwrite`.
 
 | File | One row per | What it is |
@@ -50,7 +53,9 @@ depends on the producer:
     `p_best_*` columns give how often each option is the one deployed. Flowgates
     without observed congestion dollars keep the evidence rule's choice.
   - Otherwise, the evidence rule's choice.
-  - `get_rule` always holds the evidence rule's choice.
+  - `evidence_rule_get` always holds the evidence rule's choice, made before cost (for
+    example APFC wherever an N-1 branch outage implies a parallel path). Under
+    `ranking: ev` it often differs from `recommended_get`, which weighs cost.
   - `get_basis` says what each rule saw.
   - `get_evidence` is the evidence class the priors used.
   - `get_candidates` lists the GETs that class does not rule out.
@@ -66,6 +71,9 @@ depends on the producer:
 - `sig_<signal>`: the expected value of each signal in its own units. `cov_<signal>`
   is `observed` or `unobserved`. An unobserved signal adds 0 to the composite; it is
   not evidence of 0.
+- `caution`: `same_station_ends` when a monitored "line" has the same station name at
+  both ends. Such an element may be a bus tie or an intra-station segment, where no GET
+  applies, and its identity is CEII. Otherwise blank.
 - `screen_status`, `monitored_facility`, `contingency_facility`: the DC screen's status
   and SPP's facility text.
 - `provenance`:

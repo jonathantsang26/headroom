@@ -266,3 +266,22 @@ def test_an_interrupted_build_removes_its_staging_directory(root, monkeypatch):
     assert builder.main(["--date", DAY]) == 130
     assert not list(root.glob(f".{DAY}-*")) and not (root / DAY).exists()
     assert (root / "current").readlink() == Path("2026-09-22")
+
+
+def test_sigterm_removes_staging_and_stale_staging_can_be_cleaned(root, monkeypatch):
+    import os
+    import signal
+
+    def terminated(_):
+        os.kill(os.getpid(), signal.SIGTERM)  # handled by the builder like Ctrl-C
+
+    _set_adapter(monkeypatch, fetch=terminated)
+    assert builder.main(["--date", DAY]) == 130
+    assert not list(root.glob(f".{DAY}-*"))
+    assert signal.getsignal(signal.SIGTERM) is not builder._terminate  # restored
+
+    (root / f".{DAY}-killed").mkdir()  # what SIGKILL leaves
+    (root / ".current-tmp").mkdir()  # not a staging directory
+    assert builder._stale_staging() == [root / f".{DAY}-killed"]
+    assert builder.main(["--clean-staging"]) == 0
+    assert not (root / f".{DAY}-killed").exists() and (root / ".current-tmp").exists()

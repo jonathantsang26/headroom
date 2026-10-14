@@ -345,10 +345,14 @@ def test_replayed_fabricated_inputs_remain_blocked_for_public_export(request, fi
     replay = reproduce_from_manifest(recorded.delivery.manifest)
     delivery = deliver(replay, tmp_path / "replayed-delivery")
 
-    assert delivery.mode == "internal-synthetic"
+    # a synthetic region is labelled synthetic; a live snapshot with fabricated
+    # tables is real-region data the gate refused: internal, not "synthetic"
+    want = "internal-synthetic" if replay.region.synthetic else "internal"
+    assert delivery.mode == want
     assert delivery.public_only is False
     assert set(delivery.blocked) == {score.constraint_id for score in replay.model.scores}
-    assert all(".INTERNAL.synthetic" in Path(path).name for path in delivery.paths.values())
+    suffix = ".INTERNAL.synthetic" if replay.region.synthetic else ".INTERNAL."
+    assert all(suffix in Path(path).name for path in delivery.paths.values())
     for score in replay.model.scores:
         with pytest.raises(PublishabilityError):
             assert_publishable(score.composite.lineage_id, replay.store, replay.registry)

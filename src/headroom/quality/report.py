@@ -57,8 +57,8 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
     ev = model.extras.get("ev")
     ev_ranked = bool(ev) and ev["ranking"] == "ev"
     if market_heavy:
-        rule = ("the evidence rule (get_rule) uses market facts only: breached and "
-                "persistent -> Combination, transformer -> APFC, N-1 branch outage -> APFC, "
+        rule = ("the evidence rule (column evidence_rule_get) uses market facts only: "
+                "breached and persistent -> Combination, transformer -> APFC, N-1 branch outage -> APFC, "
                 "BASE or unknown contingency -> DLR")
         if ev_ranked:
             gaps.append(

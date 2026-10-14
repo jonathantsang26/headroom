@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
+import signal
 import sys
 import tempfile
 from datetime import date
@@ -79,6 +81,21 @@ def activate_snapshot(snapshot_dir: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+_STAGING = re.compile(r"^\.\d{4}-\d{2}-\d{2}(\.r\d+)?-")
+
+
+def _stale_staging() -> list[Path]:
+    """Hidden staging directories a killed build left behind (SIGKILL, power loss)."""
+    if not SPP_ROOT.is_dir():
+        return []
+    return sorted(p for p in SPP_ROOT.iterdir()
+                  if _STAGING.match(p.name) and p.is_dir() and not p.is_symlink())
+
+
+def _terminate(signum, frame):  # SIGTERM: clean up like Ctrl-C does
+    raise KeyboardInterrupt
+
+
 def _reuse_raw(source: Path, staged: Path) -> dict:
     """Link (or copy) a completed snapshot's raw files into staging, verifying each
     against its recorded sha256; returns the source's raw entries, unchanged."""
@@ -121,11 +138,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Build and validate, but leave `current` where it is.",
     )
     ap.add_argument(
+        "--clean-staging", action="store_true",
+        help="Remove staging directories that killed builds left behind, then exit.",
+    )
+    ap.add_argument(
         "--renormalize-from", metavar="SNAPSHOT", default=None,
         help="Re-run the normalizers on an existing snapshot's raw files (no network) "
              "into a new revision of its date. Needs --revision.",
     )
     args = ap.parse_args(argv)
+    if args.clean_staging:
+        for stale in _stale_staging():
+            shutil.rmtree(stale)
+            print(f"[removed] {stale.name}")
+        return 0
     source = None
     if args.renormalize_from:
         source = SPP_ROOT / args.renormalize_from
@@ -164,7 +190,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     SPP_ROOT.mkdir(parents=True, exist_ok=True)
+    stale = _stale_staging()
+    if stale:
+        print(f"[warning] {len(stale)} staging directories from earlier failed or killed "
+              f"builds ({', '.join(p.name for p in stale)}); --clean-staging removes them",
+              file=sys.stderr)
     staged = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=SPP_ROOT))
+    previous_term = signal.signal(signal.SIGTERM, _terminate)
     (staged / "raw").mkdir()
     (staged / "normalized").mkdir()
 
@@ -192,7 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_activate:
             activate_snapshot(snap)
     except KeyboardInterrupt:
-        # an interrupted build has nothing to inspect: remove its own staging directory
+        # an interrupted build (Ctrl-C or SIGTERM) has nothing to inspect: remove its
+        # own staging directory
         if staged.exists():
             shutil.rmtree(staged)
         print(f"[INTERRUPTED] removed staging {staged.name}; current unchanged", file=sys.stderr)
@@ -201,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         retained = staged if staged.exists() else snap
         print(f"[FAILED] {exc}; retained at {retained}", file=sys.stderr)
         return 1
+    finally:
+        signal.signal(signal.SIGTERM, previous_term)
 
     if args.no_activate:
         current = SPP_ROOT / "current"

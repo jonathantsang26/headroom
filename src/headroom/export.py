@@ -13,6 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from headroom.model.ev import priors_sha256
+from headroom.model.get_match import _same_station_ends
 from headroom.pipeline import PipelineResult
 from headroom.provenance.digests import ranking_digest
 from headroom.provenance.gate import PublishabilityError, assert_publishable
@@ -29,7 +30,7 @@ _SIGNAL_ORDER = (
 
 @dataclass
 class Delivery:
-    mode: str  # "shareable" | "internal-synthetic"
+    mode: str  # "shareable" | "internal" (real data, gate refused) | "internal-synthetic"
     public_only: bool
     blocked: list[str]  # constraint_ids whose lineage is non-publishable
     blocked_tables: list[str] = field(default_factory=list)  # non-publishable input tables
@@ -105,7 +106,11 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
             "ev_expected_musd": rnd(s.ev.expected, 6) if s.ev else None,
             "ev_hi_musd": rnd(s.ev.hi, 6) if s.ev else None,
             "p_top_k_composite": rnd(s.p_top_k_composite),
-            "get_rule": s.get_rule,
+            # the evidence rule's GET (model/get_match.py), before cost: under EV ranking
+            # it often differs from recommended_get, which weighs cost
+            "evidence_rule_get": s.get_rule,
+            "caution": ("same_station_ends" if _same_station_ends(
+                meta[s.constraint_id].monitored_facility) else ""),
             "get_evidence": s.get_evidence,
             "get_candidates": ";".join(s.get_candidates),
         })
@@ -315,15 +320,28 @@ def _refuse_other_run(out: Path, manifest: dict) -> None:
 
 
 _ARTIFACTS = ("scores", "shortlist", "quality_report", "NOTICE", "run_manifest")
+_SUFFIXES = ("", ".INTERNAL", ".INTERNAL.synthetic")
 
 
 def _remove_previous_run(out: Path) -> None:
-    """--overwrite replaces the run in `out`: its artifacts under either name
-    (shareable or .INTERNAL.synthetic) go, so no stale file outlives the new run."""
+    """--overwrite replaces the run in `out`: its artifacts under any mode's name go
+    (the manifest first, so no manifest ever describes a half-replaced set)."""
+    for suffix in _SUFFIXES:
+        (out / f"run_manifest{suffix}.json").unlink(missing_ok=True)
     for stem in _ARTIFACTS:
-        for suffix in ("", ".INTERNAL.synthetic"):
+        for suffix in _SUFFIXES:
             for ext in (".json", ".csv", ".parquet", ".md"):
                 (out / f"{stem}{suffix}{ext}").unlink(missing_ok=True)
+
+
+def _export_mode(result: PipelineResult, refused: bool) -> tuple[str, bool, str]:
+    """(mode, public_only, file suffix). A refused run on real data is internal, not
+    synthetic: the label says why it cannot be shared."""
+    if not refused:
+        return "shareable", True, ""
+    if result.region.synthetic:
+        return "internal-synthetic", False, ".INTERNAL.synthetic"
+    return "internal", False, ".INTERNAL"
 
 
 def deliver(
@@ -341,11 +359,9 @@ def deliver(
     blocked = _gate_blocked(result)
     blocked_tables = _tables_blocked(result)
     blocked_sources = _store_blocked(result)
-    if blocked or blocked_tables or blocked_sources:
-        # Non-public (synthetic) lineage -> shareable export refused by the gate.
-        mode, public_only, suffix = "internal-synthetic", False, ".INTERNAL.synthetic"
-    else:
-        mode, public_only, suffix = "shareable", True, ""
+    # Non-publishable (synthetic, CEII, ...) lineage -> shareable export refused.
+    mode, public_only, suffix = _export_mode(
+        result, bool(blocked or blocked_tables or blocked_sources))
 
     rows = build_score_rows(result)
     corridors = result.model.shortlist
@@ -398,19 +414,33 @@ def deliver(
     _json_bytes(manifest)
     if not overwrite:
         _refuse_other_run(out, manifest)
-    else:
-        _remove_previous_run(out)
     names = {"scores_json": rows_json, "shortlist_json": shortlist_json, "csv": csv_path,
              "quality_report": quality_path, "notice": notice_path, "parquet": parquet_path}
-    outputs = {key: _atomic_write(names[key], data) for key, data in blobs.items()}
-    parquet_sha = _materialize_parquet(rows_json, parquet_path)
-    if parquet_sha is not None:
-        outputs["parquet"] = parquet_sha
-    # Per-file digests of the artifacts written beside this manifest (written last).
-    manifest["outputs"] = {
-        key: {"path": names[key].name, "sha256": digest} for key, digest in outputs.items()
-    }
-    _atomic_write(manifest_path, _json_bytes(manifest))
+    # Write the whole new set into a staging directory first (Parquet included), so
+    # nothing of an earlier run is touched until every new file exists; then move the
+    # files into place, the manifest last.
+    staging = out / f".staging-{uuid4().hex}"
+    staging.mkdir()
+    try:
+        staged = {key: staging / path.name for key, path in names.items()}
+        outputs = {key: _atomic_write(staged[key], data) for key, data in blobs.items()}
+        parquet_sha = _materialize_parquet(staged["scores_json"], staged["parquet"])
+        if parquet_sha is not None:
+            outputs["parquet"] = parquet_sha
+        # Per-file digests of the artifacts written beside this manifest.
+        manifest["outputs"] = {
+            key: {"path": names[key].name, "sha256": digest} for key, digest in outputs.items()
+        }
+        manifest_bytes = _json_bytes(manifest)
+        if overwrite:
+            _remove_previous_run(out)
+        for key in outputs:
+            os.replace(staged[key], names[key])
+        _atomic_write(manifest_path, manifest_bytes)
+    finally:
+        for leftover in staging.iterdir():
+            leftover.unlink()
+        staging.rmdir()
 
     paths = {
         "scores_json": str(rows_json),

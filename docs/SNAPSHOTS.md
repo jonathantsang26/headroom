@@ -81,7 +81,9 @@ flowgates have no posted dollars) and its note changed.
 The builder fetches and normalizes into a unique staging directory. Any adapter
 failure or incomplete manifest returns a nonzero exit status and preserves the
 previous `current` link. Failed staging directories remain available for inspection;
-the error names their location. A successful build moves to its dated directory
+the error names their location. An interrupted build (Ctrl-C or SIGTERM) removes its
+own staging directory. A build that was killed outright cannot clean up, so the next
+build lists the leftovers, and `--clean-staging` removes them. A successful build moves to its dated directory
 before `current` is replaced atomically. Existing dated snapshots are never rebuilt
 in place by this command.
 
