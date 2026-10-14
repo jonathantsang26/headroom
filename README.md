@@ -1,6 +1,9 @@
 # headroom
 
-Public-data transmission screening with provenance and Monte Carlo rank stability.
+Ranks transmission flowgates by the expected value of deploying grid-enhancing
+technologies (GETs), from public data only. The pilot region is SPP. Every value
+carries its provenance, the shortlist carries Monte Carlo uncertainty, and an export
+gate keeps synthetic or restricted data out of anything shareable.
 
 - Scores flowgates, groups corridors, and reports uncertainty with GET screening rules.
 - Carries observed `Fact` and reconstructed `Range` values through a lineage graph.
@@ -15,6 +18,22 @@ python3 -m venv .venv
 .venv/bin/headroom run --region spp-synth --out data/processed
 ```
 Map: install `.[app]`, then run `streamlit run src/headroom/app/streamlit_app.py`.
+
+## Layout
+```
+ingest/       region loader, snapshot manifests, source adapters (PUDL/FERC 1, EIA, HIFLD, SPP),
+              snapshot builder (build_snapshot)
+quality/      triangulation, invariants, confidence, the run's quality report
+reconstruct/  congestion rent, DC/PTDF screen, planning exhaust
+model/        signals, GET match, composite score, rank stability, EV layer (ev.py),
+              forward rent (forward.py), scoring references
+provenance/   Fact/Range envelopes, lineage, export gate, versions, replay
+export.py     ranked shortlist, NOTICE.md, run manifest
+app/          Streamlit map
+config/       sources.yaml (registry, publishable flags), scoring.yaml (fixture weights),
+              regions/ (SPP spec and scoring), get_priors.yaml (cited GET priors)
+scripts/      reference rule, forward-rent backtest, EV sensitivity, echo-gridlock cross-check
+```
 
 ## Run on public data (SPP)
 Replay the verified run from its archived snapshot (`data/raw/spp/2026-10-13.r2`, kept
