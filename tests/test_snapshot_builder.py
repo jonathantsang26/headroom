@@ -256,3 +256,13 @@ def test_renormalize_refuses_changed_raw_bytes_and_needs_a_revision(root, monkey
     assert (root / "current").readlink() == Path("2026-09-22")
     assert builder.main(["--renormalize-from", "2026-09-22", "--date", DAY,
                          "--revision", "2"]) == 1  # the date is the source's
+
+
+def test_an_interrupted_build_removes_its_staging_directory(root, monkeypatch):
+    def interrupted(_):
+        raise KeyboardInterrupt
+
+    _set_adapter(monkeypatch, fetch=interrupted)
+    assert builder.main(["--date", DAY]) == 130
+    assert not list(root.glob(f".{DAY}-*")) and not (root / DAY).exists()
+    assert (root / "current").readlink() == Path("2026-09-22")

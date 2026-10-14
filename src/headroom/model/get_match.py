@@ -87,4 +87,15 @@ def get_basis(constraint: Constraint, *, radial: bool | None, loading_observed: 
     elif constraint.ctype == "thermal" and get == "Dynamic Line Rating":
         bits.append("also=APFC or TO (need a parallel path or switching options; "
                     "topology not public)")
+    if constraint.ctype == "thermal" and _same_station_ends(constraint.monitored_facility):
+        bits.append("caution=both ends carry the same station name (a bus tie or an "
+                    "intra-station segment, where no GET may apply; element identity is CEII)")
     return "; ".join(bits)
+
+
+def _same_station_ends(facility: str | None) -> bool:
+    """'LN FT_CAL - FT_CAL': a monitored line whose two endpoint names match."""
+    if not facility or not facility.startswith("LN ") or " - " not in facility:
+        return False
+    a, b = facility[3:].split(" - ", 1)
+    return a.strip() == b.strip()

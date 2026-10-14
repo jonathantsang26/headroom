@@ -220,3 +220,11 @@ def test_a_blank_observed_dollar_is_unobserved_never_the_band(tmp_path, monkeypa
     for cid, other in result.bucket_b.congestion.items():
         if cid != first:
             assert other.rent_musd is not None and "Observed DA congestion" in other.rent_musd.basis
+
+
+def test_same_station_endpoints_get_a_caution():
+    from headroom.model.get_match import _same_station_ends
+
+    assert _same_station_ends("LN FT_CAL - FT_CAL")
+    assert not _same_station_ends("LN OSAGE_OG - WEBBTAP4")
+    assert not _same_station_ends("XFMR EDWV - EDWV") and not _same_station_ends(None)

@@ -27,6 +27,21 @@ def _assert_manifest_shareable(scores_parquet: Path) -> None:
         )
 
 
+def top_flowgates_rows(scores_parquet: str | Path, limit: int = 10) -> list[dict]:
+    """The top flowgates in the run's own rank order (the export's `rank`, which
+    follows the run's ranking: composite or EV), one dict per row."""
+    import duckdb
+
+    with duckdb.connect() as con:
+        cur = con.execute(
+            "SELECT rank, constraint_id, physical_corridor, p_top_k, recommended_get "
+            "FROM read_parquet(?) ORDER BY rank LIMIT ?",
+            [str(scores_parquet), int(limit)],
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
 def build_server(scores_parquet: str | Path = "data/processed/scores.parquet"):
     """Construct (but do not run) a FastMCP server exposing read-only query tools
     over the ranked scores. Raises a clear error if fastmcp isn't installed, or if the
@@ -42,19 +57,12 @@ def build_server(scores_parquet: str | Path = "data/processed/scores.parquet"):
             "install `fastmcp` to enable it."
         ) from e
 
-    import duckdb  # pragma: no cover
-
     mcp = FastMCP("headroom")  # pragma: no cover
 
     @mcp.tool()  # pragma: no cover
     def top_flowgates(limit: int = 10) -> list[dict]:
         """Return the top flowgates in the run's own rank order (the export's `rank`,
         which follows the run's ranking: composite or EV)."""
-        with duckdb.connect() as con:
-            return con.execute(
-                "SELECT rank, constraint_id, physical_corridor, p_top_k, recommended_get "
-                "FROM read_parquet(?) ORDER BY rank LIMIT ?",
-                [str(scores_parquet), limit],
-            ).fetchall()
+        return top_flowgates_rows(scores_parquet, limit)
 
     return mcp  # pragma: no cover

@@ -191,6 +191,12 @@ def main(argv: list[str] | None = None) -> int:
         staged.rename(snap)
         if not args.no_activate:
             activate_snapshot(snap)
+    except KeyboardInterrupt:
+        # an interrupted build has nothing to inspect: remove its own staging directory
+        if staged.exists():
+            shutil.rmtree(staged)
+        print(f"[INTERRUPTED] removed staging {staged.name}; current unchanged", file=sys.stderr)
+        return 130
     except Exception as exc:
         retained = staged if staged.exists() else snap
         print(f"[FAILED] {exc}; retained at {retained}", file=sys.stderr)

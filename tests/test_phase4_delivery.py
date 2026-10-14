@@ -159,3 +159,17 @@ def test_missing_numbers_are_null_so_columns_stay_numeric(tmp_path):
     rows = json.loads(open(d.paths["scores_json"]).read())
     assert all(r["ev_mean_musd"] is None for r in rows)  # no EV layer on the fixture
     assert all(not isinstance(r["rent_musd"], str) for r in rows)
+
+
+def test_mcp_top_flowgates_returns_dicts_in_rank_order(tmp_path):
+    from dataclasses import replace
+
+    from headroom.export import deliver
+    from headroom.mcp.server import top_flowgates_rows
+    from headroom.model import ScoringConfig
+    from headroom.pipeline import run_pipeline
+
+    d = deliver(run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60)), tmp_path)
+    rows = top_flowgates_rows(d.paths["parquet"], limit=3)
+    assert [r["rank"] for r in rows] == [1, 2, 3]
+    assert all(isinstance(r, dict) and r["constraint_id"] for r in rows)
