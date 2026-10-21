@@ -451,3 +451,4 @@ Suggested PR title: `<area>: <what>`, naming the finding, for example "Lineage: 
 ## Log
 
 - 2026-10-21 · docs/agent-work · Added docs/AGENT_WORK.md. Verified the setup, the tests (403 passed, 2 skipped) and a fresh SPP build on 2026-10-21 with a local queue re-pin · digest unchanged (a6750ade…).
+- 2026-10-21 · claude/tender-brown-1l12ow · Work item (a): export the GET decision split (`ev_from_dlr/apfc/to/c_musd`, each option's part of ev_mean) beside the label; decision on items 1–5 in GET_PRIORS.md §10.1 (1 adopted, 2–5 deferred). Offline only (SPP unreachable from the session) · digest unchanged on spp-synth (2253ae9c…) and on the committed real subset under SPP priors (00c3fcd7…); real-run digest not run.
