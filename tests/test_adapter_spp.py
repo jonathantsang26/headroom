@@ -13,8 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from headroom.ingest.adapters import common, spp
+from headroom.ingest.adapters import common, spp, spp_panel
 from headroom.ingest.snapshot import MANIFEST_NAME, Snapshot, update_manifest
+from headroom.panel import PanelRegion, build_panel
+from headroom.panel.export import deliver_panel
+from headroom.panel.footprint import FOOTPRINT_COLUMNS
 
 FIX = Path(__file__).parent / "fixtures" / "real_samples" / "spp"
 MONTHS = range(1, 13)
@@ -494,3 +497,131 @@ def test_a_join_that_leaves_most_binding_value_without_dollars_trips_the_build(
     snap, _ = _fetch(tmp_path, served, cbc=cbc)
     with pytest.raises(ValueError, match=r"of kept \|shadow price\| joined"):
         spp.normalize(snap)
+
+
+# The constraint-history panel's SPP tables (spp_panel), on the same samples.
+
+from collections import defaultdict  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
+
+SOONER = "SOONER_SONR_SONR_PHSHFT_PS|BASE"
+# Every row of these flowgates is in the sample (fixtures/real_samples/spp/README.md).
+FULL_SAMPLED = (
+    "TMP363_30990|18875", "SUB1399_1500_1_LN|BASE", "SWECHIMATTAT|5530", "TMP800_29528|BASE",
+    "T2T2_H_XF@FTSMTH<17246>|17246", "HUGOPP4|BASE", "FULTON_T_1961A_A_LN|BASE",
+    "TMP272_27635|14756", "CARNGJAMES11_11_LN@JAMESTN<16491>|16491",
+)
+
+
+def _local(r) -> datetime:
+    return datetime.strptime(r["Interval"], "%m/%d/%Y %H:%M:%S") - timedelta(hours=1)
+
+
+def _history(snap) -> dict:
+    return {(r["constraint_id"], r["period"]): r for r in _table(snap, "constraint_history")}
+
+
+def test_panel_history_matches_an_independent_count(snap):
+    counts = spp_panel.normalize(snap)
+    rows = _history(snap)
+    want = defaultdict(lambda: {"hours": set(), "abs": []})
+    for r in _sample_bc():
+        w = want[(_cid(r), f"2025-{_local(r).month:02d}")]
+        w["hours"].add(r["GMTIntervalEnd"])
+        w["abs"].append(abs(float(r["Shadow Price"])))
+    assert set(rows) == set(want)
+    for key, w in want.items():
+        got = rows[key]
+        assert got["market"] == "DA"
+        assert int(got["hours_binding"]) == len(w["hours"])
+        assert float(got["shadow_price_max"]) == pytest.approx(max(w["abs"]), abs=1e-4)
+        mean = math.fsum(w["abs"]) / len(w["abs"])
+        assert float(got["shadow_price_mean"]) == pytest.approx(mean, abs=1e-4)
+    # the panel keeps what the pipeline excludes from scoring (here, a phase shifter)
+    assert any(cid == SOONER for cid, _ in rows)
+    assert counts["flowgates"] == len({cid for cid, _ in want})
+    assert counts["history_rows"] == len(rows)
+
+
+def test_panel_agrees_with_the_pipeline_where_they_overlap(snap):
+    spp.normalize(snap)
+    counts = spp_panel.normalize(snap)
+    scored = {r["constraint_id"]: r for r in _table(snap, "congestion")}
+    months = defaultdict(list)
+    for r in _table(snap, "constraint_history"):
+        months[r["constraint_id"]].append(r)
+    assert set(scored) < set(months)
+    for cid, row in scored.items():
+        # every UTC hour falls in exactly one month
+        assert sum(int(r["hours_binding"]) for r in months[cid]) == int(row["hours_binding"])
+    # Dollars agree for the flowgates whose every row is sampled. The others appear here
+    # only through the DST-window rows while their dollar files cover the year, so the
+    # panel drops their dollar months without a binding hour; rent keeps them.
+    assert any(scored[cid]["rent_musd"] for cid in FULL_SAMPLED)
+    for cid in FULL_SAMPLED:
+        costs = [float(r["congestion_cost_usd"]) for r in months[cid] if r["congestion_cost_usd"]]
+        if scored[cid]["rent_musd"]:
+            rent = math.fsum(c for c in costs if c >= 0) / 1e6
+            assert rent == pytest.approx(float(scored[cid]["rent_musd"]), abs=1e-6)
+        else:
+            assert all(c < 0 for c in costs)
+    assert counts["dollar_months_without_binding"] > 0
+
+
+def test_panel_coverage_counts_days_with_rows_and_cites_both_files(snap):
+    counts = spp_panel.normalize(snap)
+    coverage = {r["period"]: r for r in _table(snap, "constraint_coverage")}
+    days = defaultdict(set)
+    for r in _sample_bc():
+        days[_local(r).month].add(_local(r).date())
+    for m in MONTHS:
+        row = coverage[f"2025-{m:02d}"]
+        assert row["market"] == "DA"
+        assert int(row["days_covered"]) == len(days[m]) == counts["days_covered"][m]
+        # a sample holds a few flowgates' rows, so no month reads as fully covered
+        assert 0 < int(row["days_covered"]) < int(row["days_expected"])
+        assert row["raw_refs"] == f"{BC_RAW[m]};raw:spp_cbc_2025{m:02d}"
+    entry = _manifest(snap)["tables"]["constraint_coverage"]
+    assert entry["derived_from"] == [*BC_RAW.values(), *(f"raw:spp_cbc_2025{m:02d}" for m in MONTHS)]
+
+
+def test_panel_reports_a_negative_rent_month_as_posted(snap):
+    counts = spp_panel.normalize(snap)
+    (posted,) = [-float(r["Sum"]) for r in _sample_cbc()
+                 if f"{r['Constraint Name']}|{r['Contingency Name']}" == SOONER
+                 and r["Date"] == "202511"]
+    assert posted < 0
+    row = _history(snap)[(SOONER, "2025-11")]
+    assert float(row["congestion_cost_usd"]) == pytest.approx(posted)
+    assert counts["negative_rent_months"] == 1
+
+
+def test_panel_leaves_dollars_of_a_recycled_id_blank(tmp_path, served):
+    cbc = {m: CBC_BYTES[m].decode("utf-8").replace(
+        "LN 70_BLUF - SUB1214", "LN ELSEWHERE - NOWHERE").encode("utf-8") for m in MONTHS}
+    snap, _ = _fetch(tmp_path, served, cbc=cbc)
+    counts = spp_panel.normalize(snap)
+    rows = [r for (cid, _), r in _history(snap).items() if cid.startswith("70BS12WAGS34|")]
+    assert rows and all(r["congestion_cost_usd"] == "" for r in rows)
+    assert counts["recycled_ids"] == [rows[0]["constraint_id"]]
+
+
+def test_live_panel_values_keep_their_own_spp_source(snap, tmp_path):
+    spp_panel.normalize(snap)
+    cids = ("TMP363_30990|18875", "HUGOPP4|BASE", SOONER)
+    footprint = tmp_path / "footprint.csv"
+    footprint.write_text("\n".join([",".join(FOOTPRINT_COLUMNS), *(
+        f"E{i},constraint,{cid},,verified,named directly,,tester,2026-10-25"
+        for i, cid in enumerate(cids))]) + "\n")
+    result = build_panel(PanelRegion("spp-unregistered", "SPP", snap), footprint)
+    assert result.markets == ("DA",)
+    costed = [c for c in result.cells if c.binding and "congestion_cost_usd" in c.values]
+    assert costed
+    for cell in costed:
+        closure = {n: result.store.source_closure(f.lineage_id) for n, f in cell.values.items()}
+        assert closure["congestion_cost_usd"] == {"spp_congestion_by_constraint"}
+        assert closure["hours_binding"] == {"spp_binding_constraints"}
+        assert closure["shadow_price_max"] == {"spp_binding_constraints"}
+    # both SPP sources are publishable, so the gate passes; the region stays unregistered
+    d = deliver_panel(result, tmp_path / "out")
+    assert d.mode == "shareable" and d.blocked_sources == []

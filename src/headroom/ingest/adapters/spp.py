@@ -189,8 +189,11 @@ def _read_money(path: Path, columns: tuple[str, ...], label: str) -> list[dict]:
 def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
     """Observed DA congestion $ per flowgate from congestion-by-constraint, plus the
     settled TCR DA Collected total as a calibration figure. Every month's rows must
-    carry that month; duplicate keys are removed (counted, conflicts counted)."""
-    per: dict[str, dict] = defaultdict(lambda: {"months": {}, "positive": 0, "mon": set()})
+    carry that month; duplicate keys are removed (counted, conflicts counted).
+    Negative-rent months are kept apart in `negative` (the panel reports them as
+    posted; rent never nets them)."""
+    per: dict[str, dict] = defaultdict(
+        lambda: {"months": {}, "negative": {}, "positive": 0, "mon": set()})
     seen: dict[tuple, str] = {}
     dupes = 0
     entries = {}
@@ -217,6 +220,7 @@ def _congestion_dollars(snapshot_dir: Path, year: int) -> dict:
             d["mon"].add(r["Monitored Facility"])
             if usd < 0:
                 d["positive"] += 1  # a month of negative rent: flagged, never netted
+                d["negative"][month] = d["negative"].get(month, 0.0) + usd
                 continue
             d["months"][month] = d["months"].get(month, 0.0) + usd
             cbc_month[month] += usd

@@ -13,7 +13,8 @@ deployment finding.
 latest covered month. Only `spp-synth` is registered. It is a fabricated fixture
 stamped `synthetic_fixture`, so its panel is always internal. A live region is
 registered only after its source's retrieval, retention and commercial-report rights
-are documented.
+are documented. The SPP tables can already be built, but SPP is not registered yet
+([below](#spp-tables-built-not-registered)).
 
 ## Footprint CSV
 
@@ -86,12 +87,49 @@ Loading fails before any lineage is created when:
   sum over covered months. `shadow_price_max` is the maximum, `shadow_price_mean` the
   hours-weighted mean, and `congestion_cost_usd` the sum, over binding months.
 - A price or cost appears in a summary only when every binding month publishes it.
-  Otherwise `missing` says how many months lack it.
+  Otherwise `missing` says how many months lack it. Cost is as posted, so a month the
+  source posts as negative lowers the summary's total.
 - Summary confidence is low for a verified constraint the source never reports
   (`not_seen_in_source`). It is medium when a month is partial or not covered, and
   high otherwise.
 - Summaries are sorted by market (`DA`, then `RT`), then observed hours (highest
   first), then `constraint_id`. They are not combined into a score.
+
+## SPP tables (built, not registered)
+
+`headroom.ingest.adapters.spp_panel.normalize(snapshot_dir)` writes both tables from
+the raw files the SPP adapter fetches for `spp_data_year`. Those are the twelve monthly
+day-ahead binding-constraint archives and the twelve congestion-by-constraint files.
+SPP is not a registered panel region, and the snapshot builder does not run this
+step. SPP's terms allow non-commercial use with citation, but commercial use needs
+SPP's written authorization, and registration waits until that is settled. Writing the
+tables into an existing snapshot would change its manifest and break replay of the
+runs pinned to it. Once the region is registered they go into a new revision
+(`--renormalize-from`), written after `spp.normalize`. That step's tripwires refuse
+degraded dollar files, and this one does not repeat them.
+
+| Column | What it holds |
+|---|---|
+| `constraint_id` | `Constraint Name\|Contingency Name`: the pipeline's flowgate id, so a footprint can name shortlist flowgates |
+| `hours_binding` | Distinct UTC hours (`GMTIntervalEnd`) the flowgate bound in the month, counted as the pipeline counts them. The local `Interval` minus one hour sets the month. |
+| `shadow_price_max`, `shadow_price_mean` | The maximum and mean \|shadow price\| over the month's rows |
+| `congestion_cost_usd` | SPP's congestion for that flowgate and month, negated because SPP posts it as a negative `Sum`. It carries the `spp_congestion_by_constraint` stamp through `column_sources`. A month SPP posts as negative rent is reported as posted, while the pipeline's rent leaves such months out. It is blank where SPP posts nothing, or where the dollar file names another monitored element than the binding record (a recycled id). |
+| `monitored_facility`, `contingent_facility` | SPP's most frequent spelling in the month |
+
+- Coverage is day-ahead only. A day counts as covered when the month's archive has any
+  row for it. That is a lower bound: a day on which nothing bound reads as uncovered,
+  never as zero, and a truncated archive shows up as a partial month. Each month cites
+  its binding archive and its dollar file.
+- The panel keeps every flowgate, including phase shifters and unrecognized monitored
+  elements, which the pipeline does not score. It reports history, not a GET decision.
+- Where the two overlap, the panel's monthly hours add up to the pipeline's
+  `hours_binding`, and its non-negative monthly dollars add up to `rent_musd`. A dollar
+  month with no binding hour that month gets no history row. `normalize` returns how
+  many there were (`dollar_months_without_binding`), along with the duplicate,
+  negative-rent and recycled-id counts.
+- Both SPP sources are publishable in `config/sources.yaml`, so an SPP panel passes the
+  gate as shareable. The gate does not check commercial-use terms; that is what keeps
+  SPP unregistered.
 
 ## Outputs
 

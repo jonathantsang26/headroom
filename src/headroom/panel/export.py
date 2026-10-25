@@ -27,6 +27,8 @@ CAVEATS = (
     "Footprint matches are manual. Only verified matches with recorded evidence are "
     "included; all others are listed as unresolved.",
     "Shadow prices and congestion cost appear only where the source publishes them.",
+    "Congestion cost is as posted: a month the source posts as negative stays negative, "
+    "and window totals net it.",
 )
 MONTHLY_COLUMNS = (
     "constraint_id", "market", "period", "coverage", "days_covered", "days_expected",
