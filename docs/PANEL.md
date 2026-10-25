@@ -44,7 +44,12 @@ order. UTF-8 with a spreadsheet BOM is accepted.
 A panel region is a pinned snapshot directory ([SNAPSHOTS.md](SNAPSHOTS.md)) with two
 normalized tables. An adapter writes them with `headroom.panel.tables.write_panel_table`.
 It validates the rows, writes the CSV atomically, and records the stamp, sha256 and
-`derived_from` (the raw input keys the table was built from) in the manifest.
+`derived_from` (the raw input keys the table was built from) in the manifest. A value
+column read from another source names that source in `column_sources`, and the source
+must also be one of the table's `contributors`, as in the pipeline's tables. Each of
+those values carries that column's own source, and the gate checks every contributor.
+Only `constraint_history`'s value columns (`hours_binding`, the shadow prices and
+`congestion_cost_usd`) can take a column source. Any other column fails the load.
 
 | Table | One row per | Columns |
 |---|---|---|

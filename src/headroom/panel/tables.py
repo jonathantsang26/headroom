@@ -27,6 +27,8 @@ HISTORY_COLUMNS = (
 )
 COVERAGE_COLUMNS = ("market", "period", "days_expected", "days_covered", "raw_refs")
 OPTIONAL_VALUES = ("shadow_price_max", "shadow_price_mean", "congestion_cost_usd")
+# Columns whose observations take their own source from `column_sources`.
+PER_COLUMN_STAMPED = {"constraint_history": frozenset(("hours_binding", *OPTIONAL_VALUES))}
 
 _PERIOD = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])")
 _NUMBER = re.compile(r"-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")
@@ -212,17 +214,39 @@ def _cell(value) -> str:
     return "" if value is None else str(value)
 
 
+def _stamp_entry(stamp: SourceStamp) -> dict:
+    return {
+        "source": stamp.source,
+        "source_version": stamp.source_version,
+        "retrieved_at": stamp.retrieved_at.isoformat(),
+    }
+
+
+def check_column_sources(table: str, columns) -> None:
+    """Fail closed on a column source the loader would not apply per value."""
+    unsupported = sorted(set(columns) - PER_COLUMN_STAMPED.get(table, frozenset()))
+    if unsupported:
+        raise ValueError(
+            f"column_sources for {table}.{unsupported} are not supported: the panel stamps "
+            f"per column only {sorted(PER_COLUMN_STAMPED.get(table, ()))}"
+        )
+
+
 def write_panel_table(
     snapshot_dir: Path, table: str, rows: list[dict], *, stamp: SourceStamp,
-    derived_from: list[str],
+    derived_from: list[str], contributors: list[SourceStamp] | None = None,
+    column_sources: dict[str, SourceStamp] | None = None,
 ) -> Path:
     """Adapter side of the contract: validate rows, write the normalized CSV, and
-    record its stamp, hash, and raw inputs in the snapshot manifest."""
+    record its stamp, hash, and raw inputs in the snapshot manifest. `column_sources`
+    maps value columns that come from another source (one of `contributors`) to its
+    stamp, as `common.write_table` does for the pipeline's tables."""
     columns = {"constraint_history": HISTORY_COLUMNS, "constraint_coverage": COVERAGE_COLUMNS}
     if table not in columns:
         raise ValueError(f"Unknown panel table {table!r}")
     if not derived_from:
         raise ValueError(f"{table} must name the raw inputs it was derived from")
+    check_column_sources(table, column_sources or {})
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=list(columns[table]), lineterminator="\n")
     writer.writeheader()
@@ -239,12 +263,15 @@ def write_panel_table(
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_bytes(content)
     tmp.replace(path)  # readers never see a partly written table
-    update_manifest(Path(snapshot_dir), tables={table: {
-        "source": stamp.source,
-        "source_version": stamp.source_version,
-        "retrieved_at": stamp.retrieved_at.isoformat(),
+    entry = {
+        **_stamp_entry(stamp),
         "path": f"normalized/{table}.csv",
         "sha256": sha256_of(path),
         "derived_from": list(derived_from),
-    }})
+    }
+    if contributors:
+        entry["contributors"] = [_stamp_entry(c) for c in contributors]
+    if column_sources:
+        entry["column_sources"] = {col: _stamp_entry(s) for col, s in column_sources.items()}
+    update_manifest(Path(snapshot_dir), tables={table: entry})
     return path

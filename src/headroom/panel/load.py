@@ -14,6 +14,7 @@ from headroom.panel.tables import (
     PANEL_TABLES,
     CoverageRow,
     HistoryRow,
+    check_column_sources,
     check_consistency,
     parse_coverage,
     parse_history,
@@ -61,6 +62,8 @@ class PanelInputs:
     history: list[HistoryRow]
     coverage: dict[tuple[str, str], CoverageRow]
     stamps: dict[str, SourceStamp]
+    contributors: dict[str, list[SourceStamp]]
+    column_sources: dict[str, dict[str, SourceStamp]]
     derived_from: dict[str, tuple[str, ...]]
     raw: dict[str, dict]  # key -> verified {url, path, sha256, retrieved_at}
     history_facts: dict[tuple[str, str, str], dict[str, Fact]]
@@ -73,6 +76,10 @@ def load_panel(region: PanelRegion, store: LineageStore) -> PanelInputs:
     snap = Snapshot(region.data_dir)
     raw_tables = snap.read_tables(PANEL_TABLES)
     stamps = {table: snap.stamp(table) for table in PANEL_TABLES}
+    contributors = {table: snap.contributors(table) for table in PANEL_TABLES}
+    column_sources = {table: snap.column_sources(table) for table in PANEL_TABLES}
+    for table, cols in column_sources.items():
+        check_column_sources(table, cols)
     derived = {table: snap.derived_from(table) for table in PANEL_TABLES}
     if not set(derived["constraint_history"]) <= set(derived["constraint_coverage"]):
         raise ValueError(
@@ -126,6 +133,7 @@ def load_panel(region: PanelRegion, store: LineageStore) -> PanelInputs:
         ))
 
     history_facts: dict[tuple[str, str, str], dict[str, Fact]] = {}
+    history_cols = column_sources["constraint_history"]
     for row in history:
         partial = coverage[(row.market, row.period)].status == "partial"
         base = f"panel:{row.market}:{row.period}:{row.constraint_id}"
@@ -136,7 +144,7 @@ def load_panel(region: PanelRegion, store: LineageStore) -> PanelInputs:
                 continue
             facts[name] = store.add(real_fact(
                 value=value,
-                stamp=stamps["constraint_history"],
+                stamp=history_cols.get(name, stamps["constraint_history"]),
                 unit=UNITS[name],
                 confidence="medium" if partial else "high",
                 as_reported=row.as_reported[name],
@@ -150,6 +158,8 @@ def load_panel(region: PanelRegion, store: LineageStore) -> PanelInputs:
         history=history,
         coverage=coverage,
         stamps=stamps,
+        contributors=contributors,
+        column_sources=column_sources,
         derived_from=derived,
         raw=raw,
         history_facts=history_facts,
