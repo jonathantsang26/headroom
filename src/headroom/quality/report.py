@@ -68,6 +68,31 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
                if ev else "")
         )
 
+    # the GETs the evidence does not rule out (model/get_match.py get_set)
+    get_sets = model.extras["get_set"]
+    n_open = sum(1 for g in get_sets.values() if len(g) > 1)
+    get_set_section = {
+        "n_resolved": len(get_sets) - n_open,
+        "n_unresolved": n_open,
+        "sets": dict(Counter(";".join(g) for g in get_sets.values() if len(g) > 1)),
+        "note": ("get_set lists the GETs the evidence does not rule out; get_resolved "
+                 "is true when it holds one. Where it holds several, get_shown shows "
+                 "them all and recommended_get is the rule's tie-break among them. "
+                 "Without topology only the element type rules a GET out (DLR on a "
+                 "transformer; APFC and TO on a radial line)."),
+    }
+    if ev:
+        # the EV layer's candidates come from the priors: a class prior of 0 removes a
+        # GET there that the evidence alone leaves open
+        get_set_section["n_equal_to_ev_candidates"] = sum(
+            1 for s in model.scores if get_sets[s.constraint_id] == s.get_candidates)
+    if n_open:
+        gaps.append(
+            f"get_set: for {n_open} of {len(get_sets)} flowgates the evidence does not "
+            "separate the GETs (get_resolved false). recommended_get there is the "
+            "rule's tie-break; get_shown lists every GET the evidence leaves open."
+        )
+
     ev_section = None
     if ev:
         # the EV layer's choices only: flowgates without observed rent have none
@@ -126,6 +151,7 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
         "unobserved_weight_all": round(unobserved_weight, 6),
         # the evidence rule's labels over every flowgate (the EV layer's are under ev)
         "recommended_get_mix": dict(Counter(s.recommended_get for s in model.scores)),
+        "get_set": get_set_section,
         "ev": ev_section,
         "gaps": gaps,
     }

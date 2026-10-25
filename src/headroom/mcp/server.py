@@ -29,13 +29,15 @@ def _assert_manifest_shareable(scores_parquet: Path) -> None:
 
 def top_flowgates_rows(scores_parquet: str | Path, limit: int = 10) -> list[dict]:
     """The top flowgates in the run's own rank order (the export's `rank`, which
-    follows the run's ranking: composite or EV), one dict per row."""
+    follows the run's ranking: composite or EV), one dict per row. get_shown is the
+    recommendation to show: where get_resolved is false the evidence leaves every GET
+    in get_set open, and recommended_get is only the rule's tie-break among them."""
     import duckdb
 
     with duckdb.connect() as con:
         cur = con.execute(
-            "SELECT rank, constraint_id, physical_corridor, p_top_k, recommended_get, "
-            "ev_recommended_get, ev_mean_musd "
+            "SELECT rank, constraint_id, physical_corridor, p_top_k, get_shown, "
+            "get_resolved, get_set, recommended_get, ev_recommended_get, ev_mean_musd "
             "FROM read_parquet(?) ORDER BY rank LIMIT ?",
             [str(scores_parquet), int(limit)],
         )
@@ -63,7 +65,9 @@ def build_server(scores_parquet: str | Path = "data/processed/scores.parquet"):
     @mcp.tool()  # pragma: no cover
     def top_flowgates(limit: int = 10) -> list[dict]:
         """Return the top flowgates in the run's own rank order (the export's `rank`,
-        which follows the run's ranking: composite or EV)."""
+        which follows the run's ranking: composite or EV). Show get_shown as the
+        recommended GET: where get_resolved is false, public evidence cannot tell the
+        GETs in get_set apart."""
         return top_flowgates_rows(scores_parquet, limit)
 
     return mcp  # pragma: no cover

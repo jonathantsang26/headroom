@@ -14,7 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from headroom.model.ev import priors_sha256
-from headroom.model.get_match import _same_station_ends
+from headroom.model.get_match import _same_station_ends, get_label
 from headroom.pipeline import PipelineResult
 from headroom.provenance.digests import ranking_digest
 from headroom.provenance.gate import PublishabilityError, assert_publishable
@@ -70,6 +70,7 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
     rows = []
     meta = {c.constraint_id: c for c in result.bucket_b.constraints}
     option_value = (result.model.extras.get("ev") or {}).get("option_value", {})
+    get_sets = result.model.extras["get_set"]
     for rank, s in enumerate(result.model.scores, start=1):
         row = {
             "rank": rank,
@@ -80,6 +81,7 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
             "composite_expected": round(s.composite.expected, 4),
             "composite_hi": round(s.composite.hi, 4),
             "recommended_get": s.recommended_get,
+            **_get_set_columns(get_sets[s.constraint_id]),
             "screen_status": result.bucket_b.screen_status.get(s.constraint_id, ""),
             "monitored_facility": meta[s.constraint_id].monitored_facility or "",
             "contingency_facility": meta[s.constraint_id].contingency_facility or "",
@@ -127,6 +129,29 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
         split = option_value.get(s.constraint_id, {})
         for option in _GET_OPTIONS[1:]:
             row[f"ev_from_{_slug(option)}_musd"] = rnd(split.get(option), 6)
+        rows.append(row)
+    return rows
+
+
+def _get_set_columns(gets: list[str]) -> dict:
+    """The recommendation to show beside recommended_get: where the evidence leaves
+    several GETs open, recommended_get is the rule's tie-break among them."""
+    return {"get_shown": get_label(gets), "get_resolved": len(gets) == 1,
+            "get_set": ";".join(gets)}
+
+
+def build_corridor_rows(result: PipelineResult) -> list[dict]:
+    """The shortlist's corridor rows, each with its representative flowgate's GET
+    set after recommended_get. The model's own rows, which the ranking digest
+    covers, are left as they are."""
+    get_sets = result.model.extras["get_set"]
+    rows = []
+    for c in result.model.shortlist:
+        row = {}
+        for key, value in c.items():
+            row[key] = value
+            if key == "recommended_get":
+                row.update(_get_set_columns(get_sets[c["representative_flowgate"]]))
         rows.append(row)
     return rows
 
@@ -378,7 +403,7 @@ def deliver(
         result, bool(blocked or blocked_tables or blocked_sources))
 
     rows = build_score_rows(result)
-    corridors = result.model.shortlist
+    corridors = build_corridor_rows(result)
 
     rows_json = out / f"scores{suffix}.json"
     shortlist_json = out / f"shortlist{suffix}.json"

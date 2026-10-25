@@ -48,10 +48,29 @@ depends on the producer:
     stability and does not order the list.
 - `composite_lo/expected/hi`: the weighted signal composite. Under `ranking: ev` it is
   a diagnostic, and `p_top_k_composite` gives its rank stability.
-- `recommended_get`: the evidence rule's choice under every ranking — which GET
+- `get_shown`: the recommendation to show. Where the evidence resolves one GET it is
+  that GET (= `recommended_get`); otherwise it names every GET the evidence leaves
+  open, e.g. `DLR, APFC, TO or Combination`.
+  - `get_set`: the GETs the evidence does not rule out (`;`-separated, order DLR,
+    APFC, TO, Combination), from `model/get_match.py`. `get_resolved` is true when it
+    holds one GET.
+  - Where the DC screen sees the element (topology observed, as in the synthetic
+    regions), the rule resolves one GET. Without topology, which is every real SPP
+    flowgate (element locations are CEII), only the element rules a GET out: DLR on
+    a transformer (it rates overhead conductors), APFC and TO on a line public
+    topology shows radial. Contingency, breach and binding pattern narrow nothing
+    further, so lines and interfaces read `DLR, APFC, TO or Combination` and
+    transformers `APFC or TO`. Combination (DLR with APFC) is open wherever both
+    are.
+  - The rule's own GET is always in `get_set`. For interfaces `get_basis` names no
+    alternative, but the set lists them: an interface's members are not public, and
+    the cited priors give DLR, APFC and TO each a nonzero chance there.
+- `recommended_get`: the evidence rule's single pick under every ranking — which GET
   physically fits the element, before cost (for example APFC wherever an N-1 branch
   outage implies a parallel path). It never depends on congestion dollars, so DLR is
-  assigned wherever the evidence supports it, not only where rent is high.
+  assigned wherever the evidence supports it, not only where rent is high. Where
+  `get_resolved` is false it is a tie-break among `get_set`, not a finding; show
+  `get_shown` instead. The column keeps its name and meaning for existing readers.
   - `ev_recommended_get`: the EV layer's pick — the GET that contributes most to the
     decision's expected value. `No cost-effective GET` means no applicable GET ever
     has a positive expected net value; blank means no observed congestion dollars.
@@ -61,7 +80,13 @@ depends on the producer:
     it equals `recommended_get`).
   - `get_basis` says what each rule saw.
   - `get_evidence` is the evidence class the priors used.
-  - `get_candidates` lists the GETs that class does not rule out.
+  - `get_candidates` lists the GETs the EV priors give a nonzero applicability for
+    that class (plus Combination where DLR and APFC both have one). It comes from the
+    priors, `get_set` from the evidence: under the cited priors they agree on all
+    2,072 real flowgates; they differ where the DC screen resolves one GET, and
+    wherever a prior sets a class's applicability to 0 (a judgement the evidence
+    alone does not make). `quality_report.json` counts the agreement
+    (`get_set.n_equal_to_ev_candidates`).
 - `p_best_none`, `p_best_dlr`, `p_best_apfc`, `p_best_to`, `p_best_c`: the share of
   draws in which each option is the one deployed (they sum to 1).
 - `ev_from_dlr_musd`, `ev_from_apfc_musd`, `ev_from_to_musd`, `ev_from_c_musd`: the
@@ -103,8 +128,8 @@ with a leading `'`.
 Many flowgates can sit on one physical element. A corridor row reports two views:
 
 - **Champion** (ranks the corridors): the member flowgate that ranks highest, in
-  `representative_flowgate`, with its `p_top_k`, `composite_*`, `ev_*` and
-  `recommended_get`.
+  `representative_flowgate`, with its `p_top_k`, `composite_*`, `ev_*`,
+  `recommended_get` and `get_shown`/`get_resolved`/`get_set`.
 - **Sum**:
   - `expected_topk_slots`: the sum of member `p_top_k`, i.e. the expected number of
     top-k slots the corridor holds.

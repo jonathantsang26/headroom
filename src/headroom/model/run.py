@@ -12,7 +12,7 @@ import yaml
 
 from headroom.model.ev import load_priors, run_ev, validate_priors
 from headroom.model.forward import validate_forward
-from headroom.model.get_match import get_basis, recommend_get
+from headroom.model.get_match import get_basis, get_set, recommend_get
 from headroom.model.score import composite_from_percentiles
 from headroom.model.signals import (
     _adjacency,
@@ -161,6 +161,9 @@ def run_model(
     )
 
     scores: list[Score] = []
+    # cid -> the GETs the evidence does not rule out (model/get_match.py). Held in
+    # extras, not on Score, so exporting the set leaves the ranking digest unchanged.
+    get_sets: dict[str, list[str]] = {}
     for c in bucket_b.constraints:
         cid = c.constraint_id
         signals = signals_by_cid[cid]
@@ -171,6 +174,7 @@ def run_model(
         breached = co.breached_hours if co is not None else None
         get = recommend_get(c, radial=bool(radial), signals=signals,
                             loading_observed=loading_observed, breached_hours=breached)
+        get_sets[cid] = get_set(c, radial=radial, loading_observed=loading_observed, get=get)
         scores.append(
             Score(
                 constraint_id=cid,
@@ -188,7 +192,7 @@ def run_model(
             )
         )
 
-    extras = {"radial": radial_by_cid}
+    extras = {"radial": radial_by_cid, "get_set": get_sets}
     if cfg.get_priors:
         k = _apply_ev(scores, bucket_b, radial_by_cid, cfg, store, extras, k)
 
