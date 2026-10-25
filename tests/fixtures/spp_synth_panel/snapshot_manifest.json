@@ -1,0 +1,44 @@
+{
+  "raw": {
+    "raw:da_2025": {
+      "bytes": 1708,
+      "path": "raw/da_2025.csv",
+      "retrieved_at": "2026-09-25T00:00:00+00:00",
+      "sha256": "345b5ce8219d9d3d4b0f1a703d2a89cb449aaacacbbeec410f3bf862c0244060",
+      "url": "fixture://spp_synth_panel/raw/da_2025.csv"
+    },
+    "raw:rt_2025": {
+      "bytes": 832,
+      "path": "raw/rt_2025.csv",
+      "retrieved_at": "2026-09-25T00:00:00+00:00",
+      "sha256": "0a868a8a21c4f52815f359865c9a9ad1f33da5a39432a59990900b67e7da5001",
+      "url": "fixture://spp_synth_panel/raw/rt_2025.csv"
+    }
+  },
+  "schema_version": 1,
+  "snapshot_date": "2026-09-25",
+  "tables": {
+    "constraint_coverage": {
+      "derived_from": [
+        "raw:da_2025",
+        "raw:rt_2025"
+      ],
+      "path": "normalized/constraint_coverage.csv",
+      "retrieved_at": "2026-09-25T00:00:00+00:00",
+      "sha256": "363cbe2f2ab75044830f4037a31f745dc5084462bb9f08508af7d8f2bb51e468",
+      "source": "synthetic_fixture",
+      "source_version": "synthetic"
+    },
+    "constraint_history": {
+      "derived_from": [
+        "raw:da_2025",
+        "raw:rt_2025"
+      ],
+      "path": "normalized/constraint_history.csv",
+      "retrieved_at": "2026-09-25T00:00:00+00:00",
+      "sha256": "bd5a61d8efc123c9cd5df4b07044fdc36bca9267453d62d80ae18bb60c207b11",
+      "source": "synthetic_fixture",
+      "source_version": "synthetic"
+    }
+  }
+}

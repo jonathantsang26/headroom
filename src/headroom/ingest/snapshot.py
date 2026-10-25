@@ -136,17 +136,68 @@ class Snapshot:
             raise ValueError(f"Snapshot table {table!r} note must be a string")
         return {"coverage": cov, "note": note}
 
-    def table_path(self, table: str) -> Path:
-        rel = self._entry(table).get("path", f"normalized/{table}.csv")
+    def _contained(self, rel, label: str) -> Path:
         if not isinstance(rel, str) or not rel.strip() or "\x00" in rel:
-            raise ValueError(f"Snapshot table {table!r} has an invalid path")
+            raise ValueError(f"{label} has an invalid path")
         path = Path(rel)
         if path.is_absolute():
-            raise ValueError(f"Snapshot table {table!r} path must be relative to the snapshot")
+            raise ValueError(f"{label} path must be relative to the snapshot")
         resolved = (self.root / path).resolve()
         if not resolved.is_relative_to(self.root):
-            raise ValueError(f"Snapshot table {table!r} path escapes the snapshot")
+            raise ValueError(f"{label} path escapes the snapshot")
         return resolved
+
+    def table_path(self, table: str) -> Path:
+        rel = self._entry(table).get("path", f"normalized/{table}.csv")
+        return self._contained(rel, f"Snapshot table {table!r}")
+
+    def derived_from(self, table: str) -> tuple[str, ...]:
+        """The raw-input keys a normalized table cites; required for citation."""
+        keys = self._entry(table).get("derived_from")
+        if (
+            not isinstance(keys, list) or not keys
+            or not all(isinstance(key, str) and key.strip() for key in keys)
+            or len(keys) != len(set(keys))
+        ):
+            raise ValueError(
+                f"Snapshot table {table!r} requires derived_from: a list of distinct raw input keys"
+            )
+        return tuple(keys)
+
+    def verify_raw(self, key: str) -> dict:
+        """Validate one raw input's retrieval record and bytes; return its citation."""
+        raw = self.manifest.get("raw")
+        entry = raw.get(key) if isinstance(raw, dict) else None
+        if not isinstance(entry, dict):
+            raise KeyError(
+                f"Raw input {key!r} has no entry in {self.root / MANIFEST_NAME}; "
+                "refusing to cite an unrecorded input (fail-closed)."
+            )
+        label = f"Raw input {key!r}"
+        url = entry.get("url")
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError(f"{label} requires a nonempty url")
+        retrieved_at = entry.get("retrieved_at")
+        try:
+            parsed = datetime.fromisoformat(retrieved_at) if isinstance(retrieved_at, str) else None
+        except ValueError:
+            parsed = None
+        if parsed is None or parsed.utcoffset() is None:
+            raise ValueError(f"{label} requires a timezone-aware retrieved_at")
+        path = self._contained(entry.get("path"), label)
+        want = entry.get("sha256")
+        if not isinstance(want, str) or re.fullmatch(r"[0-9a-fA-F]{64}", want) is None:
+            raise ValueError(f"{label} has a missing or invalid sha256")
+        if not path.is_file():
+            raise FileNotFoundError(f"{label} is not a file: {path}")
+        if sha256_of(path) != want.lower():
+            raise ValueError(f"{label} does not match its recorded sha256")
+        return {
+            "url": url,
+            "path": path.relative_to(self.root).as_posix(),
+            "sha256": want.lower(),
+            "retrieved_at": retrieved_at,
+        }
 
     def verify(self, table: str) -> bool:
         """True only when a table matches a valid, recorded SHA256 digest."""
