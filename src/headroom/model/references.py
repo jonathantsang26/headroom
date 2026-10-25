@@ -66,6 +66,7 @@ def check_reference_rule(scoring, input_identity: dict) -> None:
         raise ValueError(
             f"scoring references were derived from snapshot {rule.get('derived_from_snapshot')} "
             f"(congestion {want[:12]}); this input's congestion table is {str(got)[:12]}. "
-            "Re-derive: python scripts/derive_scoring_refs.py <snapshot> --check <scoring file>, "
+            "Re-derive: python scripts/derive_scoring_refs.py <snapshot> --check <scoring file> "
+            "(and forward_rent with scripts/backtest_forward_rent.py), "
             "or run with --scoring config/scoring.yaml"
         )
