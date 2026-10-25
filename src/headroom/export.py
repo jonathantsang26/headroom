@@ -69,6 +69,7 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
     """One flat row per flowgate, ranked, with signal expecteds + provenance."""
     rows = []
     meta = {c.constraint_id: c for c in result.bucket_b.constraints}
+    option_value = (result.model.extras.get("ev") or {}).get("option_value", {})
     for rank, s in enumerate(result.model.scores, start=1):
         row = {
             "rank": rank,
@@ -121,6 +122,11 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
         for option in _GET_OPTIONS:
             p = s.get_probabilities.get(option)
             row[f"p_best_{_slug(option)}"] = round(p, 4) if p is not None else None
+        # the decision split: each option's part of ev_mean (they sum to it); blank, not
+        # 0, where EV is unobserved
+        split = option_value.get(s.constraint_id, {})
+        for option in _GET_OPTIONS[1:]:
+            row[f"ev_from_{_slug(option)}_musd"] = rnd(split.get(option), 6)
         rows.append(row)
     return rows
 

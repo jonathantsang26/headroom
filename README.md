@@ -143,9 +143,17 @@ same is true of 16 scored "lines" in all.
   recurs. All 53 carry at least $5.5M of 2025 rent.
   - The other 50 rows of the 103-row shortlist have no GET worth deploying. They are
     ordered by the composite, as a watch list.
-- **GETs.** Of the 53, DLR is the GET to pursue for 45 and topology optimization for 8.
+- **GETs.** Of the 53, the EV best bet is DLR for 45 and topology optimization for 8.
   Advanced power flow control never is: its expected net value where it applies is
   negative for 99 of the top 103 (mode cost $0.86M/yr).
+  - The EV best bet follows from the priors and the element type, not from a
+    flowgate's own data. Under these priors DLR outranks TO wherever both apply, and
+    outranks APFC below about $1.5B of forward rent
+    ([GET_PRIORS.md](docs/GET_PRIORS.md) section 10.1).
+  - One label hides the split. `ev_from_dlr/apfc/to/c_musd` give each option's part of
+    the expected net value, and they sum to it. On the committed 59-flowgate real
+    subset, the four leading lines take 34–39% of it from DLR, 30–32% from DLR plus
+    APFC and 22–25% from TO.
 - **Sensitivity** (`scripts/ev_sensitivity.py`; each relief share, cost and the haircut
   at the ends of its range, each applicability ±0.25, and forward rent off).
   - **The leaders are stable:** under every perturbation at least 7 of the top 10 and

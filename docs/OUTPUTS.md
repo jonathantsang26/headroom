@@ -64,6 +64,16 @@ depends on the producer:
   - `get_candidates` lists the GETs that class does not rule out.
 - `p_best_none`, `p_best_dlr`, `p_best_apfc`, `p_best_to`, `p_best_c`: the share of
   draws in which each option is the one deployed (they sum to 1).
+- `ev_from_dlr_musd`, `ev_from_apfc_musd`, `ev_from_to_musd`, `ev_from_c_musd`: the
+  decision split. Each is the part of `ev_mean_musd` ($M/yr) that comes from draws in
+  which that option is deployed, so the four sum to `ev_mean_musd` (to rounding).
+  `ev_recommended_get` is the largest of them, so read it as the EV layer's best bet,
+  not as the only option with value: on a line the split is often spread across DLR,
+  Combination and TO (docs/GET_PRIORS.md section 10.1). The split says nothing about
+  `recommended_get`, which is the evidence rule's and never weighs cost. `p_best_none` is P(nothing
+  deployed). All four are 0 when no GET is worth deploying, and blank when the
+  flowgate has no observed congestion dollars. They rest on the cited judgement priors.
+  They are export columns only, not part of the ranking digest.
 - `ev_mean_musd`, `ev_lo_musd`, `ev_expected_musd`, `ev_hi_musd`: the GET decision's net
   value in $M/yr (see the table above). Blank when the flowgate has no observed
   congestion dollars. Rows tied at 0 are ordered by the composite.

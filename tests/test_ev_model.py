@@ -13,12 +13,13 @@ import numpy as np
 import pytest
 import yaml
 
-from headroom.export import deliver
+from headroom.export import build_score_rows, deliver
 from headroom.ingest.region import REGIONS, RegionConfig
 from headroom.model import ScoringConfig
 from headroom.model.ev import NO_GET, SINGLE_GETS, evidence_class, priors_sha256, validate_priors
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
+from headroom.schema.entities import Score
 
 SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13.r2"
 PRIORS = yaml.safe_load((Path(__file__).parent / "fixtures" / "ev_priors_test.yaml").read_text())
@@ -299,6 +300,34 @@ def test_the_recommendation_is_the_get_worth_pursuing_not_the_most_frequent_best
     assert res.p_best[top][NO_GET] > 0.5  # no GET applies in ~70% of draws
     assert res.recommended[top] == "Dynamic Line Rating"
     assert res.option_value[top]["Dynamic Line Rating"] == pytest.approx(res.ev_mean[top])
+
+
+def test_the_decision_split_sums_to_ev_mean_and_is_exported_beside_the_label(region):
+    """Each option's part of ev_mean (ev_from_* columns) sums to ev_mean; the EV
+    layer's pick (ev_recommended_get) is the largest part; rows without observed rent
+    leave the split blank, not 0. recommended_get stays the evidence rule's."""
+    result = run_pipeline(region, scoring=_scoring())
+    split = result.model.extras["ev"]["option_value"]
+    rows = {r["constraint_id"]: r for r in build_score_rows(result)}
+    cols = ("ev_from_dlr_musd", "ev_from_apfc_musd", "ev_from_to_musd", "ev_from_c_musd")
+    assert any(sum(1 for v in split[s.constraint_id].values() if v > 0) > 1
+               for s in result.model.scores if s.ev_mean)  # some value is truly split
+    for s in result.model.scores:
+        row = rows[s.constraint_id]
+        if s.ev_mean is None:
+            assert s.constraint_id not in split and all(row[c] is None for c in cols)
+            continue
+        parts = split[s.constraint_id]
+        assert set(parts) == {*SINGLE_GETS, "Combination"} and min(parts.values()) >= 0.0
+        assert sum(parts.values()) == pytest.approx(s.ev_mean, abs=1e-9)
+        assert sum(row[c] for c in cols) == pytest.approx(row["ev_mean_musd"], abs=1e-5)
+        if s.ev_mean > 0:
+            assert s.ev_get == max(parts, key=parts.get)
+        else:
+            assert s.ev_get == NO_GET and all(row[c] == 0.0 for c in cols)
+        assert row["ev_recommended_get"] == s.ev_get
+        assert row["recommended_get"] == s.get_rule  # the split never moves the physics
+    assert not any(c in Score.model_fields for c in ("option_value", *cols))  # digest-neutral
 
 
 def test_a_get_with_negative_expected_value_is_never_deployed_on_hindsight(region):
