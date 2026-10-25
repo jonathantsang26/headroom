@@ -1,4 +1,4 @@
-"""Headroom CLI:  headroom run --region spp-synth --out data/processed"""
+"""Headroom CLI:  headroom run | reproduce | panel"""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 
 from headroom.export import compare_replayed_outputs, deliver
+from headroom.panel import build_panel
+from headroom.panel.export import deliver_panel
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
 
@@ -70,6 +72,31 @@ def _report(result, d) -> int:
     return 0
 
 
+def _panel(args) -> int:
+    result = build_panel(args.region, args.footprint, start=args.start, end=args.end)
+    d = deliver_panel(result, args.out)
+    print(f"Constraint panel {result.region.name} ({result.region.rto})  mode={d.mode}")
+    if d.mode != "shareable":
+        print(
+            "  ! shareable export refused by the publishable gate "
+            f"(non-publishable: {', '.join(d.blocked_sources)}) — wrote INTERNAL artifact."
+        )
+    print(f"  window {result.window[0]}..{result.window[1]}: "
+          f"{len(result.footprint.verified())} verified constraints, "
+          f"{len(result.footprint.unresolved())} unresolved footprint rows")
+    for market in result.markets:
+        statuses = [
+            cov.status if (cov := result.inputs.coverage.get((market, period))) else "none"
+            for period in result.periods
+        ]
+        print(f"  {market} coverage: {statuses.count('full')} full, "
+              f"{statuses.count('partial')} partial, {statuses.count('none')} not covered "
+              f"of {len(statuses)} months")
+    for key, path in d.paths.items():
+        print(f"  {key}: {path}")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="headroom", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -90,6 +117,16 @@ def main(argv=None) -> int:
     replay.add_argument("--overwrite", action="store_true",
                         help="replace a different run already in --out")
     replay.set_defaults(func=_reproduce)
+
+    panel = sub.add_parser(
+        "panel", help="cited constraint-history panel for a footprint (no composite score)",
+    )
+    panel.add_argument("--region", default="spp-synth", help="registered panel region")
+    panel.add_argument("--footprint", required=True, help="footprint match CSV (see docs/PANEL.md)")
+    panel.add_argument("--out", required=True, help="directory for panel artifacts")
+    panel.add_argument("--start", help="first month, YYYY-MM (default: earliest covered)")
+    panel.add_argument("--end", help="last month, YYYY-MM (default: latest covered)")
+    panel.set_defaults(func=_panel)
 
     args = p.parse_args(argv)
     try:
