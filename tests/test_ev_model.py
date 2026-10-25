@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -66,10 +67,12 @@ def test_ev_ranks_the_real_subset_and_stays_shareable(region, tmp_path):
         assert s.ev.lo <= s.ev.expected <= s.ev.hi  # realized value: can be negative
         assert s.ev_mean >= 0.0  # deploying nothing is always possible
         assert sum(s.get_probabilities.values()) == pytest.approx(1.0)
-        assert s.recommended_get in {*s.get_candidates, NO_GET}
+        assert s.ev_get in {*s.get_candidates, NO_GET}
         if s.get_evidence.startswith("transformer") or s.get_evidence == "interface":
             assert s.get_probabilities["Dynamic Line Rating"] == 0.0
-            assert s.recommended_get != "Dynamic Line Rating"
+            assert s.ev_get != "Dynamic Line Rating"
+        # the headline assignment stays the evidence rule's (physics), even under EV
+        assert s.recommended_get == s.get_rule
         assert s.p_top_k_composite is not None and s.get_rule
         # lineage: observed facts only; priors are basis text, never a leaf
         closure = result.store.source_closure(s.ev.lineage_id)
@@ -94,6 +97,11 @@ def test_ev_ranks_the_real_subset_and_stays_shareable(region, tmp_path):
     assert d.manifest["scoring"]["get_priors_sha256"] == priors_sha256(PRIORS)
     qr = json.loads(Path(d.paths["quality_report"]).read_text())
     assert qr["ev"]["priors_version"] == "ev_priors_test"
+    # the report counts each pick under its own name: physics over every flowgate,
+    # the EV layer's over the flowgates it valued
+    assert qr["recommended_get_mix"] == dict(Counter(s.recommended_get for s in scores))
+    assert qr["ev"]["ev_recommended_get_mix"] == dict(Counter(s.ev_get for s in ranked))
+    assert not any("EV layer's GET that contributes" in g for g in qr["gaps"])
 
 
 def test_ev_is_relief_share_times_rent_when_everything_else_is_fixed(region):
@@ -122,7 +130,7 @@ def test_ev_is_relief_share_times_rent_when_everything_else_is_fixed(region):
         assert 0.1 * rent.lo - 1e-9 <= s.ev.lo and s.ev.hi <= 0.1 * rent.hi + 1e-9
         # zero rent ties DLR with doing nothing; ties go to "no cost-effective GET"
         want_get = "Dynamic Line Rating" if rent.lo > 0 else NO_GET
-        assert s.recommended_get == want_get
+        assert s.ev_get == want_get
 
 
 def test_cost_above_any_relief_means_no_get(region):
@@ -132,7 +140,7 @@ def test_cost_above_any_relief_means_no_get(region):
     result = run_pipeline(region, scoring=_scoring(p))
     for s in result.model.scores:
         if s.ev is not None:
-            assert s.recommended_get == NO_GET and s.ev.hi == 0.0
+            assert s.ev_get == NO_GET and s.ev.hi == 0.0
         # every draw's best is doing nothing (EV 0): zero ties never enter the top k
         assert s.p_top_k == 0.0
 
@@ -143,6 +151,8 @@ def test_composite_ranking_keeps_ev_as_columns_only(region):
     assert [s.constraint_id for s in composite.model.scores] == [s.constraint_id for s in plain.model.scores]
     assert [s.p_top_k for s in composite.model.scores] == [s.p_top_k for s in plain.model.scores]
     assert all(s.recommended_get == s.get_rule for s in composite.model.scores)
+    # the EV pick is still computed as a column under composite ranking
+    assert any(s.ev_get is not None for s in composite.model.scores)
 
 
 def test_ev_run_replays_and_refuses_tampered_priors(region, tmp_path):

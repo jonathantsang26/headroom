@@ -100,6 +100,9 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
         "physical_corridor", "recommended_get", "p_top_k", "n_flowgates",
         "composite_lo", "composite_expected", "composite_hi", "has_geometry",
     ]
+    # the EV layer's economics, when it ran: what pays, beside what physically fits
+    if view["ev_get"].notna().any():
+        show_cols[2:2] = ["ev_get", "ev_mean"]
     st.dataframe(view[show_cols], use_container_width=True)
 
     # ---- detail panel: uncertainty made legible ----
@@ -111,6 +114,8 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
             lo, exp, hi = d["composite"]
             c1, c2, c3 = st.columns(3)
             c1.metric("Recommended GET", d["recommended_get"])
+            if d.get("ev_get"):
+                c1.caption(f"EV best bet: {d['ev_get']} ({d['ev_mean']:.2f} $M/yr)")
             c2.metric("Rank stability (p_top_k)", f"{d['p_top_k']:.3f}")
             c3.metric("Composite (p50)", f"{exp:.3f}", f"[{lo:.3f} .. {hi:.3f}]")
             st.caption(f"{d['n_flowgates']} flowgate(s): {', '.join(d['flowgates'])}")

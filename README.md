@@ -70,12 +70,14 @@ Sources, pins and the table contract: [ADAPTERS.md](docs/ADAPTERS.md). What each
 file and column means: [OUTPUTS.md](docs/OUTPUTS.md).
 
 ## Status
-Verified on 2026-10-13. `headroom run --region spp` on snapshot `2026-10-13.r2`, at
-commit `45a79a0`, writes a **shareable** export: the unchanged publishable gate passed
-all 2,072 scores, all nine input tables and every value in the lineage graph.
-`headroom reproduce` rebuilds the ranking (digest `a6750ade…`), the export decision,
-and byte-identical scores, shortlist, CSV, quality report and NOTICE. Later commits
-replay it as long as they do not change the hashed pipeline code. Each export carries
+Verified on 2026-10-13. `headroom run --region spp` on snapshot `2026-10-13.r2`
+writes a **shareable** export: the unchanged publishable gate passed all 2,072
+scores, all nine input tables and every value in the lineage graph.
+`headroom reproduce` rebuilds the ranking (digest `8bdd46ec…` since the
+`recommended_get`-is-physics fix; the `v0.1` tag at `f707549` replays its own
+archived run at digest `a6750ade…`), the export decision, and byte-identical
+scores, shortlist, CSV, quality report and NOTICE. Later commits replay a run as
+long as they do not change the hashed pipeline code. Each export carries
 `NOTICE.md`, which lists every source used with its terms. SPP's terms allow
 non-commercial use with citation; commercial use needs SPP's written authorization.
 
@@ -110,7 +112,13 @@ haircut, cost and next year's congestion are known. The inputs are:
 
 The weighted composite is still exported as a diagnostic.
 
-| # | Corridor | 2025 DA rent (champion flowgate) | Months binding | Expected net value, $M/yr (p5 to p95) | GET | P(nothing deployed) |
+The ranking is economics; the GET *assignment* is not. `recommended_get` is the
+physical evidence rule's choice (`model/get_match.py`) under every ranking, so DLR is
+assigned wherever the element's evidence supports it — not only where congestion
+dollars are high. The EV layer's own pick (which GET pays, after its cost hurdle) is
+exported beside it as `ev_recommended_get`; below, "EV best bet" is that column.
+
+| # | Corridor | 2025 DA rent (champion flowgate) | Months binding | Expected net value, $M/yr (p5 to p95) | EV best bet | P(nothing deployed) |
 |---|---|---|---|---|---|---|
 | 1 | LN OSAGE_OG - WEBBTAP4 | $97.0M | 12 | 2.22 (−1.55 to 10.65) | DLR | 0.25 |
 | 2 | LN CLEVLND7 - CLEV_AEC | $83.3M | 12 | 1.76 (−1.55 to 9.04) | DLR | 0.26 |

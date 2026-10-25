@@ -48,16 +48,17 @@ depends on the producer:
     stability and does not order the list.
 - `composite_lo/expected/hi`: the weighted signal composite. Under `ranking: ev` it is
   a diagnostic, and `p_top_k_composite` gives its rank stability.
-- `recommended_get`:
-  - Under `ranking: ev`, the GET that contributes most to the decision's expected value.
-    `No cost-effective GET` means no applicable GET ever has a positive expected net
-    value. `get_basis` gives each GET's expected net value where it applies. The
-    `p_best_*` columns give how often each option is the one deployed. Flowgates
-    without observed congestion dollars keep the evidence rule's choice.
-  - Otherwise, the evidence rule's choice.
-  - `evidence_rule_get` always holds the evidence rule's choice, made before cost (for
-    example APFC wherever an N-1 branch outage implies a parallel path). Under
-    `ranking: ev` it often differs from `recommended_get`, which weighs cost.
+- `recommended_get`: the evidence rule's choice under every ranking — which GET
+  physically fits the element, before cost (for example APFC wherever an N-1 branch
+  outage implies a parallel path). It never depends on congestion dollars, so DLR is
+  assigned wherever the evidence supports it, not only where rent is high.
+  - `ev_recommended_get`: the EV layer's pick — the GET that contributes most to the
+    decision's expected value. `No cost-effective GET` means no applicable GET ever
+    has a positive expected net value; blank means no observed congestion dollars.
+    `get_basis` gives each GET's expected net value where it applies. The `p_best_*`
+    columns give how often each option is the one deployed.
+  - `evidence_rule_get` repeats the evidence rule's choice (kept for compatibility;
+    it equals `recommended_get`).
   - `get_basis` says what each rule saw.
   - `get_evidence` is the evidence class the priors used.
   - `get_candidates` lists the GETs that class does not rule out.

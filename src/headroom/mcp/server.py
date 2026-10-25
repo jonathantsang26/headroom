@@ -34,7 +34,8 @@ def top_flowgates_rows(scores_parquet: str | Path, limit: int = 10) -> list[dict
 
     with duckdb.connect() as con:
         cur = con.execute(
-            "SELECT rank, constraint_id, physical_corridor, p_top_k, recommended_get "
+            "SELECT rank, constraint_id, physical_corridor, p_top_k, recommended_get, "
+            "ev_recommended_get, ev_mean_musd "
             "FROM read_parquet(?) ORDER BY rank LIMIT ?",
             [str(scores_parquet), int(limit)],
         )

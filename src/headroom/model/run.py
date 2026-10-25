@@ -220,8 +220,10 @@ def _rank_key(s: Score, ranking: str) -> tuple:
 
 def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: ScoringConfig,
               store: LineageStore, extras: dict, k: int) -> int:
-    """Attach the EV layer; when the region ranks by EV, it also sets p_top_k and
-    the recommended GET (the evidence rule's choice stays in get_rule)."""
+    """Attach the EV layer; when the region ranks by EV, it also sets p_top_k.
+    recommended_get stays the evidence rule's pick under every ranking (which GET
+    physically fits the element); the EV layer's own pick (which GET pays, after the
+    cost hurdle) goes in ev_get, so value never masquerades as applicability."""
     res = run_ev(bb.constraints, bb, radial_by_cid, cfg.get_priors, store,
                  draws=cfg.draws, top_fraction=cfg.top_fraction, seed=cfg.seed,
                  forward=cfg.forward_rent)
@@ -232,21 +234,22 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         s.get_probabilities = res.p_best.get(cid, {})
         s.get_candidates = res.candidates.get(cid, [])
         s.get_evidence = res.evidence.get(cid, "")
+        s.ev_get = res.recommended.get(cid)
         if cfg.ranking != "ev":
             continue
         s.p_top_k_composite = s.p_top_k
         s.p_top_k = res.p_top_k.get(cid, 0.0)
         if cid in res.recommended:
-            best = res.recommended[cid]
-            s.recommended_get = best
             where = ", ".join(f"{g} {v:.3g}" for g, v in res.expected_if_applies[cid].items())
-            s.get_basis += (f"; GET = the largest share of the decision's expected value; "
-                            f"expected net value where each applies ($M/yr): {where}; nothing "
-                            f"is deployed in {s.get_probabilities.get('No cost-effective GET', 0):.0%} "
+            s.get_basis += (f"; EV best bet: {s.ev_get} (largest share of the decision's "
+                            f"expected value — economics, not a physical assignment; "
+                            f"recommended_get stays the evidence rule); expected net value "
+                            f"where each applies ($M/yr): {where}; nothing is deployed in "
+                            f"{s.get_probabilities.get('No cost-effective GET', 0):.0%} "
                             f"of draws (priors {res.priors_version}, evidence "
-                            f"{s.get_evidence}); evidence rule: {s.get_rule}")
+                            f"{s.get_evidence})")
         else:
-            s.get_basis += "; EV unobserved (no observed rent): GET from the evidence rule"
+            s.get_basis += "; EV unobserved (no observed rent)"
     extras["ev"] = {
         "ranking": cfg.ranking, "k": res.k, "unobserved": res.unobserved,
         "priors_version": res.priors_version, "priors_sha256": res.priors_sha256,
@@ -294,6 +297,7 @@ def _dedupe_to_corridors(scores: list[Score], ranking: str = "composite") -> lis
                 # sum over flowgates double-counts a shared deployment: an upper bound
                 "sum_ev_mean": sum(m.ev_mean for m in members if m.ev_mean is not None),
                 "sum_ev_expected": sum(e.expected for e in evs),
+                "ev_get": best.ev_get,
                 "get_probabilities": best.get_probabilities,
             })
     if ranking == "ev":

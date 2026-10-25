@@ -107,8 +107,11 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
             "ev_expected_musd": rnd(s.ev.expected, 6) if s.ev else None,
             "ev_hi_musd": rnd(s.ev.hi, 6) if s.ev else None,
             "p_top_k_composite": rnd(s.p_top_k_composite),
-            # the evidence rule's GET (model/get_match.py), before cost: under EV ranking
-            # it often differs from recommended_get, which weighs cost
+            # recommended_get is the evidence rule's GET (model/get_match.py) under every
+            # ranking: which GET physically fits the element, before cost.
+            # ev_recommended_get is the EV layer's pick: which GET pays after the cost
+            # hurdle — blank without observed rent, "No cost-effective GET" below it.
+            "ev_recommended_get": s.ev_get,
             "evidence_rule_get": s.get_rule,
             "caution": ("same_station_ends" if _same_station_ends(
                 meta[s.constraint_id].monitored_facility) else ""),

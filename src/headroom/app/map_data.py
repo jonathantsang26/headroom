@@ -47,6 +47,9 @@ def corridor_segments(result: PipelineResult) -> list[dict]:
             "composite_lo": c["composite_lo"],
             "composite_expected": c["composite_expected"],
             "composite_hi": c["composite_hi"],
+            # economics beside the physical assignment, when the EV layer ran
+            "ev_get": c.get("ev_get"),
+            "ev_mean": c.get("ev_mean"),
             "provenance": c["provenance"],
             "color": get_color(get),
             "width": width_from_p(c["p_top_k"]),
@@ -113,6 +116,8 @@ def corridor_detail(result: PipelineResult, corridor_id: str) -> dict | None:
         "n_flowgates": row["n_flowgates"],
         "flowgates": row["flowgates"],
         "recommended_get": row["recommended_get"],
+        "ev_get": row.get("ev_get"),
+        "ev_mean": row.get("ev_mean"),
         "p_top_k": row["p_top_k"],
         "composite": (row["composite_lo"], row["composite_expected"], row["composite_hi"]),
         "signals": signals,
