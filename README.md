@@ -29,6 +29,7 @@ model/        signals, GET match, composite score, rank stability, EV layer (ev.
               forward rent (forward.py), scoring references
 provenance/   Fact/Range envelopes, lineage, export gate, versions, replay
 export.py     ranked shortlist, NOTICE.md, run manifest
+panel/        cited constraint-history panel for a buyer footprint (headroom panel)
 app/          Streamlit map
 config/       sources.yaml (registry, publishable flags), scoring.yaml (fixture weights),
               regions/ (SPP spec and scoring), get_priors.yaml (cited GET priors)
@@ -67,7 +68,8 @@ Replay passes only at a commit whose pipeline code and source pins match the man
   ```
 
 Sources, pins and the table contract: [ADAPTERS.md](docs/ADAPTERS.md). What each output
-file and column means: [OUTPUTS.md](docs/OUTPUTS.md).
+file and column means: [OUTPUTS.md](docs/OUTPUTS.md). The footprint and table contract
+of `headroom panel`: [PANEL.md](docs/PANEL.md).
 
 ## Status
 Verified on 2026-10-13. `headroom run --region spp` on snapshot `2026-10-13.r2`, at

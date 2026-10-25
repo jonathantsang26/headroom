@@ -199,6 +199,26 @@ def test_writer_validates_before_writing(tmp_path):
         write_panel_table(tmp_path, "congestion", [], stamp=stamp, derived_from=["raw:x"])
 
 
+def test_failed_write_keeps_the_prior_table(tmp_path, monkeypatch):
+    stamp = SourceStamp("synthetic_fixture", "synthetic", datetime(2026, 9, 25, tzinfo=timezone.utc))
+    feb = {"market": "DA", "period": "2025-02", "days_expected": 28, "days_covered": 28,
+           "raw_refs": "raw:x"}
+    mar = {**feb, "period": "2025-03", "days_expected": 31, "days_covered": 31}
+    path = write_panel_table(tmp_path, "constraint_coverage", [feb], stamp=stamp,
+                             derived_from=["raw:x"])
+    before = path.read_bytes()
+
+    def disk_full(self, target):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", disk_full)
+    with pytest.raises(OSError, match="disk full"):
+        write_panel_table(tmp_path, "constraint_coverage", [feb, mar], stamp=stamp,
+                          derived_from=["raw:x"])
+    assert path.read_bytes() == before
+    assert _manifest(tmp_path)["tables"]["constraint_coverage"]["sha256"] == sha256_of(path)
+
+
 def _footprint(*rows: str, header: str = HEADER):
     return parse_footprint("\n".join((header, *rows)).encode("utf-8"), name="fp.csv")
 

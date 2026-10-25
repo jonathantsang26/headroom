@@ -236,7 +236,9 @@ def write_panel_table(
 
     path = Path(snapshot_dir) / "normalized" / f"{table}.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_bytes(content)
+    tmp.replace(path)  # readers never see a partly written table
     update_manifest(Path(snapshot_dir), tables={table: {
         "source": stamp.source,
         "source_version": stamp.source_version,

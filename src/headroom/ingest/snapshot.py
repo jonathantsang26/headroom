@@ -165,7 +165,8 @@ class Snapshot:
         return tuple(keys)
 
     def verify_raw(self, key: str) -> dict:
-        """Validate one raw input's retrieval record and bytes; return its citation."""
+        """Validate one raw input's retrieval record and bytes; return its citation.
+        The one raw-input check: adapters reach it through `common.raw_entry`."""
         raw = self.manifest.get("raw")
         entry = raw.get(key) if isinstance(raw, dict) else None
         if not isinstance(entry, dict):
@@ -174,6 +175,7 @@ class Snapshot:
                 "refusing to cite an unrecorded input (fail-closed)."
             )
         label = f"Raw input {key!r}"
+        path = self._contained(entry.get("path"), label)
         url = entry.get("url")
         if not isinstance(url, str) or not url.strip():
             raise ValueError(f"{label} requires a nonempty url")
@@ -184,7 +186,6 @@ class Snapshot:
             parsed = None
         if parsed is None or parsed.utcoffset() is None:
             raise ValueError(f"{label} requires a timezone-aware retrieved_at")
-        path = self._contained(entry.get("path"), label)
         want = entry.get("sha256")
         if not isinstance(want, str) or re.fullmatch(r"[0-9a-fA-F]{64}", want) is None:
             raise ValueError(f"{label} has a missing or invalid sha256")
