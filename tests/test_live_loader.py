@@ -6,6 +6,7 @@ export gate; the loader is what's under test.)"""
 
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 from datetime import datetime
@@ -148,3 +149,45 @@ def test_live_loader_uses_relocated_manifest_paths(tmp_path):
     assert len(bundle.buses) > 0
     assert len(bundle.line_skeleton) > 0
     assert all((bundle.constraints, bundle.congestion, bundle.planning, bundle.queue, bundle.load_930))
+
+
+def _rewrite(snap: Path, table: str, edit) -> None:
+    """Rewrite a snapshot table's rows with `edit` and re-pin its sha256."""
+    path = snap / "normalized" / f"{table}.csv"
+    with path.open(newline="") as fh:
+        rows = edit(list(csv.DictReader(fh)))
+    with path.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    mpath = snap / "snapshot_manifest.json"
+    manifest = json.loads(mpath.read_text())
+    manifest["tables"][table]["sha256"] = sha256_of(path)
+    mpath.write_text(json.dumps(manifest))
+
+
+def _doctor(snap: Path, table: str, column: str, value: str, row: int = 0) -> None:
+    """Rewrite one cell of a snapshot table and re-pin its sha256."""
+    def edit(rows):
+        rows[row][column] = value
+        return rows
+    _rewrite(snap, table, edit)
+
+
+@pytest.mark.parametrize("table, column", [
+    ("buses", "lat"), ("buses", "lon"), ("buses", "weight"),
+    ("hifld_lines", "length_mi"), ("hifld_lines", "voltage_kv"),
+    ("eia_lines", "voltage_kv"), ("ferc1_lines", "voltage_kv"),
+    ("ferc1_lines", "thermal_limit_mw"), ("ferc1_lines", "cost_usd"),
+    ("congestion", "monthly_cost_musd"), ("planning", "assigned_cost_musd"),
+    ("queue", "mw"), ("load_930", "load_mw"),
+])
+@pytest.mark.parametrize("raw", ["nan", "inf", "-Infinity", "1e999"])
+def test_live_loader_rejects_a_non_finite_number(tmp_path, table, column, raw):
+    # float() takes each of these; an inf planning cost became the top planning
+    # signal and a nan FERC cost exported silently
+    snap = _make_snapshot(tmp_path)
+    _doctor(snap, table, column, raw)
+    with pytest.raises(ValueError, match="not a finite number"):
+        _load_live(_region(snap), LineageStore())
+

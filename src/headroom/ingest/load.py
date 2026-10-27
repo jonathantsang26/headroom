@@ -9,6 +9,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -210,6 +211,15 @@ def _text(row: dict, key: str) -> str:
     return (row.get(key) or "").strip()
 
 
+def _finite_float(raw: str, where: str) -> float:
+    """float() also reads "nan", "inf" and an overflowing "1e999"; no table reports
+    those, and one would rank (an infinite cost tops its signal) or export silently."""
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError(f"{where} is not a finite number: {raw!r}")
+    return value
+
+
 def _unique(rows: list[dict], key, table: str) -> None:
     seen = set()
     for r in rows:
@@ -259,10 +269,10 @@ def _envelope(
             bus_id=r["bus_id"],
             name=r["name"],
             ba=r["ba"],
-            lat=float(r["lat"]),
-            lon=float(r["lon"]),
+            lat=_finite_float(r["lat"], f"buses.lat for {r['bus_id']}"),
+            lon=_finite_float(r["lon"], f"buses.lon for {r['bus_id']}"),
             role=r["role"],
-            weight=float(r["weight"]),
+            weight=_finite_float(r["weight"], f"buses.weight for {r['bus_id']}"),
         )
         for r in tables["buses"]
     ]
@@ -282,16 +292,19 @@ def _envelope(
         line_skeleton[line_id] = {
             "from_bus": h["from_bus"],
             "to_bus": h["to_bus"],
-            "length_mi": float(h["length_mi"]),
+            "length_mi": _finite_float(h["length_mi"], f"hifld_lines.length_mi for {line_id}"),
         }
         # voltage observed independently by up to three providers
         obs: list[Fact] = [store.add(_leaf(
-            s_h, value=float(h["voltage_kv"]), provider=PROVIDER_HIFLD, unit="kV",
+            s_h, value=_finite_float(h["voltage_kv"], f"hifld_lines.voltage_kv for {line_id}"),
+            provider=PROVIDER_HIFLD, unit="kV",
             as_reported=h["voltage_kv"], lineage_id=f"obs:{PROVIDER_HIFLD}:{line_id}:voltage",
         ))]
         if line_id in eia and _text(eia[line_id], "voltage_kv"):
             obs.append(store.add(_leaf(
-                s_e, value=float(eia[line_id]["voltage_kv"]), provider=PROVIDER_EIA,
+                s_e, value=_finite_float(eia[line_id]["voltage_kv"],
+                                         f"eia_lines.voltage_kv for {line_id}"),
+                provider=PROVIDER_EIA,
                 unit="kV", as_reported=eia[line_id]["voltage_kv"],
                 lineage_id=f"obs:{PROVIDER_EIA}:{line_id}:voltage",
             )))
@@ -299,7 +312,9 @@ def _envelope(
             f = ferc1[line_id]
             if _text(f, "voltage_kv"):
                 obs.append(store.add(_leaf(
-                    s_f, value=float(f["voltage_kv"]), provider=PROVIDER_FERC1,
+                    s_f, value=_finite_float(f["voltage_kv"],
+                                             f"ferc1_lines.voltage_kv for {line_id}"),
+                    provider=PROVIDER_FERC1,
                     unit="kV", as_reported=f["voltage_kv"],
                     lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:voltage",
                 )))
@@ -312,13 +327,16 @@ def _envelope(
                 ))
             if _text(f, "thermal_limit_mw"):
                 thermal_obs[line_id] = store.add(_leaf(
-                    s_f, value=float(f["thermal_limit_mw"]), provider=PROVIDER_FERC1,
+                    s_f, value=_finite_float(f["thermal_limit_mw"],
+                                             f"ferc1_lines.thermal_limit_mw for {line_id}"),
+                    provider=PROVIDER_FERC1,
                     unit="MW", as_reported=f["thermal_limit_mw"],
                     lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:thermal",
                 ))
             if _text(f, "cost_usd"):
                 cost_obs[line_id] = store.add(_leaf(
-                    s_f, value=float(f["cost_usd"]), provider=PROVIDER_FERC1,
+                    s_f, value=_finite_float(f["cost_usd"], f"ferc1_lines.cost_usd for {line_id}"),
+                    provider=PROVIDER_FERC1,
                     unit="USD", as_reported=f["cost_usd"],
                     lineage_id=f"obs:{PROVIDER_FERC1}:{line_id}:cost",
                 ))
@@ -415,7 +433,8 @@ def _row_facts(store: LineageStore, stamp: SourceStamp | None, provider: str,
             continue
         col = (column_sources or {}).get(name)
         ids.append(store.add(_leaf(
-            col or stamp, value=float(raw), provider=col.source if col else provider,
+            col or stamp, value=_finite_float(raw, f"{prefix}:{name}"),
+            provider=col.source if col else provider,
             as_reported=raw, lineage_id=f"{prefix}:{name}",
         )).lineage_id)
     return ids
