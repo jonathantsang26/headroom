@@ -94,3 +94,14 @@ def test_missing_lineage_node_fails_closed():
     assert any(s.startswith(UNKNOWN_PREFIX) for s in closure)
     with pytest.raises(PublishabilityError):
         assert_publishable(child.lineage_id, store, reg, public_only=True)
+
+
+def test_lineage_store_refuses_a_different_envelope_under_an_existing_id():
+    # a re-added id used to replace the earlier value, and with it the lineage
+    store = LineageStore()
+    first = store.add(_range("plancost:F", "spp_itp"))
+    assert store.add(first) is first
+    store.add(_range("plancost:F", "spp_itp"))  # an equal envelope is the same value
+    with pytest.raises(ValueError, match="plancost:F"):
+        store.add(_range("plancost:F", "spp_fca"))
+    assert store.get("plancost:F").source == "spp_itp"

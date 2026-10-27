@@ -18,6 +18,7 @@ from headroom.ingest.region import REGIONS, RegionConfig
 from headroom.model import ScoringConfig
 from headroom.model.ev import NO_GET, SINGLE_GETS, evidence_class, priors_sha256, validate_priors
 from headroom.pipeline import run_pipeline
+from headroom.provenance.lineage import LineageStore
 from headroom.provenance.reproduce import reproduce_from_manifest
 from headroom.schema.entities import Score
 
@@ -201,8 +202,10 @@ def _ev_direct(result, priors, *, seed=7, draws=2000, point_rent=False):
             for cid, co in congestion.items()
         }
     radial = {c.constraint_id: None for c in bb.constraints}
+    # a store of its own: the run's store already holds each flowgate's EV under
+    # these ids, from the run's priors (run_ev only adds to the store)
     return run_ev(bb.constraints, SimpleNamespace(congestion=congestion), radial, priors,
-                  result.store, draws=draws, top_fraction=0.25, seed=seed)
+                  LineageStore(), draws=draws, top_fraction=0.25, seed=seed)
 
 
 def _only(get, p_app, **fixed):

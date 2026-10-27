@@ -8,6 +8,7 @@ from headroom.provenance.lineage import LineageStore
 from headroom.quality import run_bucket_a
 from headroom.reconstruct import run_bucket_b
 from headroom.reconstruct.network_model import DCModel, ptdf_matrix, solve_flows
+from headroom.reconstruct.planning_extract import planning_items
 
 
 # ---- PTDF math (hand-computable 3-bus triangle, equal reactances) ----
@@ -125,3 +126,15 @@ def test_reactance_attached_as_range():
     store, bb = _bucket_b()
     # reactance was estimated + attached as a bounded Range
     assert store.get("reactance:LINE_1") is not None
+
+
+def test_two_planning_rows_for_one_constraint_are_refused():
+    # the second row's cost used to replace the first's ($145M ITP by $5M)
+    rows = [
+        {"constraint_id": "F", "plan": "ITP", "proposed_fix": "rebuild",
+         "assigned_cost_musd": "145", "_lineage": ["obs:planning:F:0:assigned_cost_musd"]},
+        {"constraint_id": "F", "plan": "FCA", "proposed_fix": "reconductor",
+         "assigned_cost_musd": "5", "_lineage": ["obs:planning:F:1:assigned_cost_musd"]},
+    ]
+    with pytest.raises(ValueError, match="2 planning rows for constraint 'F'"):
+        planning_items(rows, LineageStore())

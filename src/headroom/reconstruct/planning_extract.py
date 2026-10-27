@@ -16,6 +16,11 @@ def planning_items(rows: list[dict], store: LineageStore) -> dict[str, PlanningI
     out: dict[str, PlanningItem] = {}
     for r in rows:
         cid = r["constraint_id"]
+        if cid in out:
+            # one plancost per constraint: a second row would replace the first's cost
+            n = sum(1 for x in rows if x["constraint_id"] == cid)
+            raise ValueError(f"Table 'planning' has {n} planning rows for constraint "
+                             f"{cid!r}; combine them in the snapshot before a run")
         cost = float(r["assigned_cost_musd"])
         provider = _PLAN_PROVIDER.get(r["plan"], "spp_itp")
         assigned = store.add(

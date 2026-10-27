@@ -191,3 +191,21 @@ def test_live_loader_rejects_a_non_finite_number(tmp_path, table, column, raw):
     with pytest.raises(ValueError, match="not a finite number"):
         _load_live(_region(snap), LineageStore())
 
+
+
+@pytest.mark.parametrize("table", ["hifld_lines", "eia_lines", "ferc1_lines"])
+def test_live_loader_rejects_a_duplicate_line_id(tmp_path, table):
+    # the last row used to win silently
+    snap = _make_snapshot(tmp_path)
+    _rewrite(snap, table, lambda rows: rows + [{**rows[0], "voltage_kv": "230"}])
+    with pytest.raises(ValueError, match="duplicate key 'LINE_1'"):
+        _load_live(_region(snap), LineageStore())
+
+
+def test_live_loader_lets_unmatched_ferc1_rows_share_a_blank_line_id(tmp_path):
+    # most real FERC Form 1 rows match no HIFLD line and carry a blank line_id
+    snap = _make_snapshot(tmp_path)
+    blank = {"line_id": "", "voltage_kv": "138", "conductor": "795 ACSR",
+             "thermal_limit_mw": "", "cost_usd": ""}
+    _rewrite(snap, "ferc1_lines", lambda rows: rows + [blank, blank])
+    assert _load_live(_region(snap), LineageStore()).line_skeleton

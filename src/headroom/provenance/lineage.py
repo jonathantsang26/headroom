@@ -23,7 +23,13 @@ class LineageStore:
                 self.add(env)
 
     def add(self, env: Envelope) -> Envelope:
-        """Register a value. Returns it, so callers can `store.add(Fact(...))`."""
+        """Register a value. Returns it, so callers can `store.add(Fact(...))`. An id
+        names one value: re-adding it with a different envelope raises, rather than
+        replacing the value (and its lineage) that earlier readers saw."""
+        existing = self._nodes.get(env.lineage_id)
+        if existing is not None and existing is not env and existing != env:
+            raise ValueError(f"Lineage id {env.lineage_id!r} is already registered with "
+                             "a different value")
         self._nodes[env.lineage_id] = env
         return env
 

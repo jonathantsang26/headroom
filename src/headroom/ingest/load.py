@@ -278,9 +278,14 @@ def _envelope(
     ]
 
     s_h, s_e, s_f = stamps["hifld_lines"], stamps["eia_lines"], stamps["ferc1_lines"]
-    hifld = {r["line_id"]: r for r in tables["hifld_lines"]}
-    eia = {r["line_id"]: r for r in tables["eia_lines"] if _text(r, "line_id")}
-    ferc1 = {r["line_id"]: r for r in tables["ferc1_lines"] if _text(r, "line_id")}
+    # a blank line_id is a FERC1/EIA row matched to no HIFLD line; those may repeat
+    keyed = {t: [r for r in tables[t] if t == "hifld_lines" or _text(r, "line_id")]
+             for t in ("hifld_lines", "eia_lines", "ferc1_lines")}
+    for t, rows in keyed.items():
+        _unique(rows, lambda r: r["line_id"], t)
+    hifld = {r["line_id"]: r for r in keyed["hifld_lines"]}
+    eia = {r["line_id"]: r for r in keyed["eia_lines"]}
+    ferc1 = {r["line_id"]: r for r in keyed["ferc1_lines"]}
 
     line_skeleton: dict[str, dict] = {}
     voltage_obs: dict[str, list[Fact]] = {}
