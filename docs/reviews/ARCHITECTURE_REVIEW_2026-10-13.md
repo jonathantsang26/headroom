@@ -34,6 +34,11 @@
 >   - The forward-rent backtest is stored as data.
 >
 >   Still open from A18: `add()` overwriting silently, and mutable envelopes.
+> - **After a verified Gemini 4 Argon review of `86589b7`** (branch `claude/review-low-fixes`):
+>   `f6d790d` makes `LineageStore.add()` refuse a different envelope under an id it
+>   already holds, and refuses duplicate planning rows and line ids (A18; mutable
+>   envelopes are still open). `cc85f56` closes A14: MCP serves a parquet only when its
+>   sha256 is the one its run manifest records, and a DuckDB failure fails the export.
 
 **Repository:** `claude/real-public-snapshot`, worktree `determined-hawking-c7208e`.
 
