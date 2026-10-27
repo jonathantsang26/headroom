@@ -33,21 +33,24 @@ def recommend_get(
     if constraint.ctype == "interface":
         return "Advanced Power Flow Control"
 
+    if constraint.ctype == "transformer":
+        # DLR rates conductors, not transformers, so neither DLR nor Combination
+        return "Advanced Power Flow Control"
+
     if loading_observed:
         heavy = signals["loading"].expected >= _HEAVY
-        if heavy and persistent:
-            return "Combination"
         if constraint.ctype == "thermal" and radial:
-            # weather-exposed radial line -> rate it dynamically
+            # weather-exposed radial line -> rate it dynamically (no parallel path
+            # for APFC, so not Combination either)
             return "Dynamic Line Rating"
-        # meshed thermal or a transformer: push flow off the overloaded element
+        if heavy and persistent:
+            return "Combination"  # meshed thermal: DLR with APFC
+        # meshed thermal: push flow off the overloaded element
         return "Advanced Power Flow Control"
 
     heavy = breached_hours is not None and breached_hours >= 1
     if heavy and persistent:
         return "Combination"
-    if constraint.ctype == "transformer":
-        return "Advanced Power Flow Control"  # DLR rates conductors, not transformers
     if constraint.base_case is False and constraint.branch_outage:
         # binds after a branch outage shifts flow onto it: the outaged branch shares a
         # loop with it, so a parallel path exists

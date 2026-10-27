@@ -65,18 +65,19 @@ def test_without_topology_only_the_element_rules_a_get_out(c, kw, want_get, want
     assert get in gets  # the rule's GET is a tie-break among the open GETs
 
 
-def test_the_rules_own_get_stays_in_the_set():
-    # breached and persistent is checked before the transformer branch, so the rule
-    # can pick Combination (which includes DLR) on a transformer; the set keeps it
+def test_a_breached_persistent_transformer_is_not_combination():
+    # Combination includes DLR, which rates conductors, not transformers
     get, gets = _rule(_c("transformer", **N1_BRANCH), breached=2, persistence=0.9)
-    assert get == C and gets == [APFC, TO, C]
+    assert get == APFC and gets == [APFC, TO]
 
 
 @pytest.mark.parametrize("c, kw, want", [
     (_c(), {"radial": True}, DLR),
     (_c(), {"radial": False}, APFC),
     (_c(), {"radial": False, "loading": 1.2, "persistence": 0.9}, C),
+    (_c(), {"radial": True, "loading": 1.2, "persistence": 0.9}, DLR),  # no parallel path
     (_c("transformer"), {}, APFC),
+    (_c("transformer"), {"radial": False, "loading": 1.2, "persistence": 0.9}, APFC),
     (_c("interface"), {}, APFC),
     (_c("loopflow"), {}, TO),
 ])
