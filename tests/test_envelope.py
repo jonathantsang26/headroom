@@ -72,3 +72,12 @@ def test_derive_lineage_id_is_deterministic_and_order_independent():
     b = derive_lineage_id("composite", ["p2", "p1"])  # order should not matter
     assert a == b
     assert a != derive_lineage_id("composite", ["p1", "p3"])
+
+
+@pytest.mark.parametrize("dist", ["uniform", "lognormal"])
+def test_range_is_drawn_triangular_only(dist):
+    # Range.sample drew uniform and lognormal ranges too, but nothing built one and
+    # no test drew one; such a range is refused rather than drawn by untested code
+    with pytest.raises(ValidationError):
+        Range(lo=0.4, expected=1.1, hi=2.3, dist=dist, basis="b", source="s",
+              source_version="v", lineage_id="x")

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from datetime import datetime
-from pathlib import Path
 
 # Pin to a stable PUDL release, never `nightly`, for any shareable run.
 PUDL_RELEASE = "v2024.11.0"
@@ -57,10 +55,3 @@ def build_run_manifest(
     if output_sha256 is not None:
         manifest["output_sha256"] = output_sha256
     return manifest
-
-
-def write_run_manifest(manifest: dict, path: str | Path) -> Path:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
-    return path

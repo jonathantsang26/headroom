@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 Confidence = Literal["high", "medium", "low"]
-Dist = Literal["uniform", "triangular", "lognormal"]
+Dist = Literal["triangular"]  # the one distribution Range.sample draws
 
 
 def derive_lineage_id(label: str, inputs: list[str]) -> str:
@@ -76,16 +76,4 @@ class Range(_Enveloped):
         range (lo == hi) returns its point value."""
         if self.lo == self.hi:
             return float(self.lo)
-        if self.dist == "uniform":
-            return float(rng.uniform(self.lo, self.hi))
-        if self.dist == "lognormal" and self.lo > 0 and self.expected > 0:
-            import math
-
-            mu = math.log(self.expected)
-            # Treat [lo, hi] as a ~p5..p95 span to back out sigma.
-            sigma = (math.log(self.hi) - math.log(self.lo)) / (2 * 1.645)
-            if sigma <= 0:
-                return float(self.expected)
-            return float(rng.lognormal(mean=mu, sigma=sigma))
-        # triangular (default, and the lognormal fallback)
         return float(rng.triangular(self.lo, self.expected, self.hi))

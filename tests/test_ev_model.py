@@ -128,7 +128,7 @@ def test_ev_is_relief_share_times_rent_when_everything_else_is_fixed(region):
             want = np.percentile(draws, 50) * 0.1
         else:  # a degenerate band: every draw is the point value
             want = rent.expected * 0.1
-        assert s.ev.expected == pytest.approx(want, rel=0.05, abs=1e-12)
+        assert s.ev.expected == pytest.approx(want, rel=0.02, abs=1e-12)
         assert 0.1 * rent.lo - 1e-9 <= s.ev.lo and s.ev.hi <= 0.1 * rent.hi + 1e-9
         # zero rent ties DLR with doing nothing; ties go to "no cost-effective GET"
         want_get = "Dynamic Line Rating" if rent.lo > 0 else NO_GET
