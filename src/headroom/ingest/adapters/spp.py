@@ -9,6 +9,7 @@ import io
 import json
 import math
 import re
+import statistics
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -262,7 +263,7 @@ def _congestion_tripwires(money: dict, joined_share: float, year: int) -> None:
             bad.append(f"{year}-{month:02d} congestion-by-constraint ${cbc / 1e6:,.1f}M is "
                        f"{cbc / tcr:.2f}x DA Collected ${tcr / 1e6:,.1f}M")
     if ratios:
-        median = sorted(ratios.values())[len(ratios) // 2]
+        median = statistics.median(ratios.values())
         for month, r in ratios.items():
             if lo <= r <= hi and not rlo * median <= r <= rhi * median:
                 bad.append(f"{year}-{month:02d} congestion-by-constraint / DA Collected is "

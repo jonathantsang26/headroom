@@ -78,7 +78,7 @@ def run_pipeline(
         check_stamp_pins(bundle, registry)
     check_reference_rule(scoring, bundle.input_identity)
     check_forward_rent_rule(scoring.forward_rent, bundle.raw_inputs)
-    bucket_a = run_bucket_a(bundle, store)
+    bucket_a = run_bucket_a(bundle, store, registry)
     bucket_b = run_bucket_b(bundle, bucket_a, store)
     model = run_model(bucket_a, bucket_b, store, scoring)
 

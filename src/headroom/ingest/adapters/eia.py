@@ -4,6 +4,7 @@ hourly balancing-authority demand (Grid Monitor six-month bulk CSVs; no API key)
 from __future__ import annotations
 
 import csv
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -152,15 +153,24 @@ def load_plants(snapshot_dir: Path) -> list[dict]:
     ]
 
 
+def _finite(text: str, col: str) -> float:
+    """Only a blank cell is missing: a malformed or non-finite number raises rather
+    than fall back to the next column or pass as a value."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise ValueError(f"EIA-930 column {col!r} holds a malformed number: {text!r}") from None
+    if not math.isfinite(value):
+        raise ValueError(f"EIA-930 column {col!r} holds a non-finite number: {text!r}")
+    return value
+
+
 def _num(row: dict, cols: tuple[str, ...]) -> tuple[float, str, str] | None:
-    """First non-blank numeric column: (value, as-reported text, column name)."""
+    """First non-blank column: (value, as-reported text, column name)."""
     for col in cols:
         text = (row.get(col) or "").replace(",", "").strip()
         if text:
-            try:
-                return float(text), text, col
-            except ValueError:
-                continue
+            return _finite(text, col), text, col
     return None
 
 
@@ -168,12 +178,9 @@ def _wind(row: dict, header: list[str]) -> float | None:
     for group in WIND_COLS:
         if not all(c in header for c in group):
             continue
-        vals = [(row.get(c) or "").replace(",", "").strip() for c in group]
-        if any(vals):
-            try:
-                return sum(float(v) for v in vals if v)
-            except ValueError:
-                return None
+        vals = [((row.get(c) or "").replace(",", "").strip(), c) for c in group]
+        if any(text for text, _ in vals):
+            return sum(_finite(text, c) for text, c in vals if text)
     return None
 
 

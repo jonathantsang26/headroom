@@ -6,21 +6,40 @@ from collections import Counter
 
 from headroom.provenance.envelope import Fact
 from headroom.provenance.lineage import LineageStore
+from headroom.sources.registry import SourceRegistry, load_registry
+
+
+def _tier_rank(obs: Fact, registry: SourceRegistry) -> tuple[int, int]:
+    """Sort key for an observation's source tier: tier 1 first; a non-numeric tier
+    ("synthetic", "x") or an unregistered source last. The tier is the imitated
+    source's (`provider`) where there is one, as on the synthetic fixtures."""
+    spec = registry.get(obs.provider or "") or registry.get(obs.source)
+    tier = spec.tier if spec is not None else None
+    return (0, tier) if isinstance(tier, int) else (1, 0)
 
 
 def triangulate_voltage(
-    line_id: str, observations: list[Fact], store: LineageStore
+    line_id: str, observations: list[Fact], store: LineageStore,
+    registry: SourceRegistry | None = None,
 ) -> Fact:
     """Combine independent voltage observations into one derived `Fact`. The result
     is a derived envelope (inputs = the observation lineage_ids), so the gate's
-    taint walk reaches the underlying sources."""
+    taint walk reaches the underlying sources. The most common value wins; a tie
+    (one source against one, as every HIFLD/FERC1 disagreement is) goes to the value
+    of the highest-tier source, then to the first observed."""
     if not observations:
         raise ValueError(
             f"triangulate_voltage({line_id!r}): no voltage observations to combine."
         )
     values = [float(o.value) for o in observations]
     counts = Counter(values)
-    chosen, top_n = counts.most_common(1)[0]
+    top_n = max(counts.values())
+    tied = [v for v, n in counts.items() if n == top_n]  # first-observed order
+    chosen = tied[0]
+    if len(tied) > 1:
+        registry = registry or load_registry()
+        chosen = min(tied, key=lambda v: min(
+            _tier_rank(o, registry) for o in observations if float(o.value) == v))
 
     flags: list[str] = []
     if len(counts) > 1:

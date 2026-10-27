@@ -494,3 +494,11 @@ def test_a_join_that_leaves_most_binding_value_without_dollars_trips_the_build(
     snap, _ = _fetch(tmp_path, served, cbc=cbc)
     with pytest.raises(ValueError, match=r"of kept \|shadow price\| joined"):
         spp.normalize(snap)
+
+
+def test_the_years_ratio_is_the_true_median_of_twelve_months():
+    # six months at 1.0x and six at 1.5x: the median is 1.25, and every month is within
+    # 0.8-1.5x of it; the upper middle value (1.5) made the 1.0x months look truncated
+    money = {"cbc_month": {m: (100.0 if m <= 6 else 150.0) for m in spp.MONTHS},
+             "tcr_month": {m: 100.0 for m in spp.MONTHS}}
+    spp._congestion_tripwires(money, 1.0, 2025)

@@ -122,3 +122,13 @@ def test_replay_refuses_to_write_over_the_run_it_verifies(tmp_path, capsys):
               "--out", str(tmp_path / "original")])
     assert exc.value.code == 1 and "choose another --out" in capsys.readouterr().err
     assert (tmp_path / "original" / "shortlist.INTERNAL.synthetic.csv").read_bytes() == before
+
+
+@pytest.mark.parametrize("body", ["weights: [1, 2\n", "weights: [1, 2]\n"])
+def test_a_malformed_scoring_file_is_a_one_line_error(tmp_path, capsys, body):
+    # a YAML syntax error and a wrongly shaped section used to print a traceback
+    scoring = tmp_path / "scoring.yaml"
+    scoring.write_text(body)
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--scoring", str(scoring), "--out", str(tmp_path / "out")])
+    assert exc.value.code == 1 and capsys.readouterr().err.startswith("headroom: ")

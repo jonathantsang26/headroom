@@ -58,3 +58,27 @@ def test_cost_prior_is_high_when_unflagged():
 def test_quality_report_records_violations():
     _, res = _result()
     assert res.quality_report["n_violations"] >= 2  # implausible voltage + conductor
+
+
+def _volt(provider, kv):
+    from datetime import datetime, timezone
+
+    from headroom.provenance.envelope import Fact
+
+    return Fact(value=kv, as_reported=str(kv), unit="kV", confidence="medium",
+                source="synthetic_fixture", provider=provider, source_version="v",
+                retrieved_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                lineage_id=f"obs:{provider}:L:voltage")
+
+
+def test_a_one_one_voltage_tie_goes_to_the_higher_tier_source():
+    # FERC Form 1 (tier 1) against HIFLD (tier 3): the first observation used to win
+    from headroom.quality.triangulate import triangulate_voltage
+
+    hifld, ferc1 = _volt("hifld_transmission", 345.0), _volt("pudl_ferc_form1", 350.0)
+    for obs in ([hifld, ferc1], [ferc1, hifld]):
+        v = triangulate_voltage("L", obs, LineageStore())
+        assert v.value == 350.0 and v.flags == ["source_divergence"]
+    # a source the registry does not know ranks below every tiered one
+    v = triangulate_voltage("L", [_volt("unregistered", 230.0), hifld], LineageStore())
+    assert v.value == 345.0

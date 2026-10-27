@@ -7,6 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
+import yaml
+
 from headroom.export import compare_replayed_outputs, deliver
 from headroom.model.get_match import get_label
 from headroom.pipeline import run_pipeline
@@ -97,7 +99,8 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     try:
         return args.func(args)
-    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
+            yaml.YAMLError) as exc:
         p.exit(1, f"headroom: {exc}\n")
 
 

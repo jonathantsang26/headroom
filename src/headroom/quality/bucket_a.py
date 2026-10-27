@@ -14,6 +14,7 @@ from headroom.quality import confidence as conf
 from headroom.quality import invariants as inv
 from headroom.quality.triangulate import triangulate_voltage
 from headroom.schema.entities import Bus, Line
+from headroom.sources.registry import SourceRegistry, load_registry
 
 
 @dataclass
@@ -28,7 +29,9 @@ class BucketAResult:
         return {ln.line_id: ln for ln in self.lines}
 
 
-def run_bucket_a(bundle: IngestBundle, store: LineageStore) -> BucketAResult:
+def run_bucket_a(bundle: IngestBundle, store: LineageStore,
+                 registry: SourceRegistry | None = None) -> BucketAResult:
+    registry = registry or load_registry()  # source tiers break voltage ties
     lines: list[Line] = []
     violations: list[inv.Violation] = []
     all_facts: list[tuple[str, Fact]] = []  # (field, fact) for the report
@@ -40,7 +43,7 @@ def run_bucket_a(bundle: IngestBundle, store: LineageStore) -> BucketAResult:
         cost = bundle.cost_obs.get(line_id)
 
         # 5.1 triangulate voltage across providers
-        voltage = triangulate_voltage(line_id, obs, store)
+        voltage = triangulate_voltage(line_id, obs, store, registry)
 
         # 5.2 invariants (flag, never drop)
         violations += inv.check_voltage_in_set(line_id, obs)

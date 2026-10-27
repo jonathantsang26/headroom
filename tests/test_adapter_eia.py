@@ -180,3 +180,23 @@ def test_load_930_stamp(snap):
         m["raw"][f"raw:eia930_2024_{h}"]["retrieved_at"] for h in eia.EIA930_HALVES
     )
     assert "no API key" in entry["note"]
+
+
+@pytest.mark.parametrize("text", ["n/a", "12..5", "nan", "inf", "1e999"])
+def test_a_malformed_or_non_finite_930_number_raises(text):
+    # a malformed adjusted demand fell back to the unadjusted column; "nan" passed
+    row = {"Demand (MW) (Adjusted)": text, "Demand (MW)": "1,200"}
+    with pytest.raises(ValueError, match=r"'Demand \(MW\) \(Adjusted\)'"):
+        eia._num(row, eia.DEMAND_COLS)
+    wind = "Net Generation (MW) from Wind (Adjusted)"
+    with pytest.raises(ValueError, match="from Wind"):
+        eia._wind({wind: text}, [wind])
+
+
+def test_only_a_blank_930_number_is_missing():
+    row = {"Demand (MW) (Adjusted)": " ", "Demand (MW)": "1,200"}
+    assert eia._num(row, eia.DEMAND_COLS) == (1200.0, "1200", "Demand (MW)")
+    assert eia._num({"Demand (MW) (Adjusted)": ""}, eia.DEMAND_COLS) is None
+    cols = ("Net Generation (MW) from Wind without Integrated Battery Storage (Adjusted)",
+            "Net Generation (MW) from Wind with Integrated Battery Storage (Adjusted)")
+    assert eia._wind({cols[0]: "40", cols[1]: ""}, list(cols)) == 40.0
