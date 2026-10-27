@@ -55,31 +55,48 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
             f"{1 - unobserved_weight:.2f}."
         )
     ev = model.extras.get("ev")
-    ev_ranked = bool(ev) and ev["ranking"] == "ev"
     if market_heavy:
-        rule = ("the evidence rule (column evidence_rule_get) uses market facts only: "
-                "breached and persistent -> Combination, transformer -> APFC, N-1 branch outage -> APFC, "
-                "BASE or unknown contingency -> DLR")
-        if ev_ranked:
-            gaps.append(
-                f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
-                f"the element. recommended_get is the EV layer's GET that contributes most "
-                f"to the decision's expected value, or none if no GET is worth deploying "
-                f"(flowgates without observed rent keep the evidence rule); {rule}. Each "
-                "get_basis lists the GETs the evidence does not rule out."
-            )
-        else:
-            gaps.append(
-                f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
-                f"the element, so {rule}. Each get_basis lists the GETs the evidence does "
-                "not rule out."
-            )
+        rule = ("the evidence rule (recommended_get, repeated as evidence_rule_get) uses "
+                "market facts only: breached and persistent -> Combination, transformer -> "
+                "APFC, N-1 branch outage -> APFC, BASE or unknown contingency -> DLR")
+        gaps.append(
+            f"recommended_get: for {market_heavy} flowgates the DC screen could not see "
+            f"the element, so {rule}. Each get_basis lists the GETs the evidence does "
+            "not rule out."
+            + (" ev_recommended_get, the EV layer's GET contributing most to the "
+               "decision's expected value, is economics, not a physical assignment."
+               if ev else "")
+        )
+
+    # the GETs the evidence does not rule out (model/get_match.py get_set)
+    get_sets = model.extras["get_set"]
+    n_open = sum(1 for g in get_sets.values() if len(g) > 1)
+    get_set_section = {
+        "n_resolved": len(get_sets) - n_open,
+        "n_unresolved": n_open,
+        "sets": dict(Counter(";".join(g) for g in get_sets.values() if len(g) > 1)),
+        "note": ("get_set lists the GETs the evidence does not rule out; get_resolved "
+                 "is true when it holds one. Where it holds several, get_shown shows "
+                 "them all and recommended_get is the rule's tie-break among them. "
+                 "Without topology only the element type rules a GET out (DLR on a "
+                 "transformer; APFC and TO on a radial line)."),
+    }
+    if ev:
+        # the EV layer's candidates come from the priors: a class prior of 0 removes a
+        # GET there that the evidence alone leaves open
+        get_set_section["n_equal_to_ev_candidates"] = sum(
+            1 for s in model.scores if get_sets[s.constraint_id] == s.get_candidates)
+    if n_open:
+        gaps.append(
+            f"get_set: for {n_open} of {len(get_sets)} flowgates the evidence does not "
+            "separate the GETs (get_resolved false). recommended_get there is the "
+            "rule's tie-break; get_shown lists every GET the evidence leaves open."
+        )
 
     ev_section = None
     if ev:
-        # the EV layer's choices only: flowgates without observed rent keep the rule's
-        mix = (Counter(s.recommended_get for s in model.scores if s.ev is not None)
-               if ev_ranked else {})
+        # the EV layer's choices only: flowgates without observed rent have none
+        mix = Counter(s.ev_get for s in model.scores if s.ev is not None)
         ev_section = {
             "ranking": ev["ranking"],
             "priors_version": ev["priors_version"],
@@ -88,7 +105,7 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
             "n_with_a_get_worth_deploying": ev.get("n_positive"),
             "n_unobserved_rent": len(ev["unobserved"]),
             "unobserved_rent": ev["unobserved"],
-            "recommended_get_mix": dict(mix),
+            "ev_recommended_get_mix": dict(mix),
             "forward_rent": ({k: ev["forward_rent"].get(k) for k in (
                 "predictor", "ratio_quantiles", "ratio_mean", "derived_from_snapshot",
                 "backtest")} if ev.get("forward_rent") else None),
@@ -101,7 +118,8 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
                      "under ranking: ev. ev lo/expected/hi are the p5/p50/p95 of its "
                      "realized value, which is negative when a deployment loses money. "
                      "p_top_k is the share of draws in the top k with a positive realized "
-                     "value. recommended_get is the GET contributing most to ev_mean. Relief "
+                     "value. ev_recommended_get is the GET contributing most to ev_mean; "
+                     "recommended_get stays the evidence rule's physical assignment. Relief "
                      "share, haircut, cost, applicability and relief scale are cited "
                      "judgement priors (config), not observations; the order of the "
                      "shortlist rests on them."
@@ -131,6 +149,9 @@ def build_quality_report(bundle: IngestBundle, bucket_a, bucket_b, model,
         "signal_coverage": {k: dict(v) for k, v in per_signal.items()},
         "scores_affected": affected,
         "unobserved_weight_all": round(unobserved_weight, 6),
+        # the evidence rule's labels over every flowgate (the EV layer's are under ev)
+        "recommended_get_mix": dict(Counter(s.recommended_get for s in model.scores)),
+        "get_set": get_set_section,
         "ev": ev_section,
         "gaps": gaps,
     }
