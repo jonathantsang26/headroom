@@ -249,3 +249,89 @@ def test_artifacts_without_a_manifest_are_not_silently_joined(tmp_path):
         deliver(run, tmp_path)
     deliver(run, tmp_path, overwrite=True)
     assert not (tmp_path / "scores.INTERNAL.parquet").exists()
+
+
+@pytest.mark.parametrize("lead", ["", " ", "\n", "  \n "])
+@pytest.mark.parametrize("trigger", ["=", "+", "-", "@", "\t", "\r", "＝"])
+def test_every_formula_trigger_is_escaped_even_after_leading_space(lead, trigger):
+    # a spreadsheet skips leading spaces and newlines, and reads a full-width ＝ as =
+    from headroom.export import _cell
+
+    value = f"{lead}{trigger}HYPERLINK(\"x\")"
+    assert _cell(value) == "'" + value
+    assert _cell("LN A - B") == "LN A - B" and _cell(" A") == " A"
+
+
+@pytest.fixture
+def shareable_parquet(tmp_path):
+    """A shareable export of the fixture (its source marked publishable) and its
+    run manifest."""
+    from dataclasses import replace
+
+    from headroom.model import ScoringConfig
+
+    reg = load_registry()
+    reg.get("synthetic_fixture").compliance.publishable = True
+    result = run_pipeline("spp-synth", registry=reg,
+                          scoring=replace(ScoringConfig.load(), draws=60))
+    d = deliver(result, tmp_path)
+    assert d.mode == "shareable"
+    return Path(d.paths["parquet"]), Path(d.paths["manifest"])
+
+
+def test_mcp_serves_the_parquet_its_manifest_records(shareable_parquet):
+    from headroom.mcp.server import _assert_manifest_shareable
+
+    pq, _ = shareable_parquet
+    _assert_manifest_shareable(pq)  # no raise
+
+
+def test_mcp_refuses_a_parquet_whose_bytes_its_manifest_does_not_record(shareable_parquet):
+    from headroom.mcp.server import _assert_manifest_shareable
+
+    pq, _ = shareable_parquet
+    pq.write_bytes(pq.read_bytes() + b"\0")
+    with pytest.raises(RuntimeError, match="sha256"):
+        _assert_manifest_shareable(pq)
+
+
+def test_mcp_refuses_when_the_manifest_records_no_parquet(shareable_parquet):
+    from headroom.mcp.server import _assert_manifest_shareable
+
+    pq, manifest_path = shareable_parquet
+    manifest = json.loads(manifest_path.read_text())
+    del manifest["outputs"]["parquet"]
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(RuntimeError, match="records no parquet"):
+        _assert_manifest_shareable(pq)
+
+
+def test_mcp_refuses_a_file_not_named_as_an_export(shareable_parquet):
+    # "backup.parquet" has as many letters as "scores", so slicing found the shareable
+    # run_manifest.json beside it
+    import shutil
+
+    from headroom.mcp.server import _assert_manifest_shareable
+
+    pq, _ = shareable_parquet
+    other = pq.with_name("backup.parquet")
+    shutil.copy(pq, other)
+    with pytest.raises(RuntimeError, match="not an export's scores parquet"):
+        _assert_manifest_shareable(other)
+
+
+def test_a_duckdb_failure_fails_the_export_instead_of_dropping_the_parquet(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    import duckdb
+
+    from headroom.model import ScoringConfig
+
+    def boom(*a, **k):
+        raise duckdb.IOException("cannot write parquet")
+
+    result = run_pipeline("spp-synth", scoring=replace(ScoringConfig.load(), draws=60))
+    monkeypatch.setattr(duckdb, "connect", boom)
+    with pytest.raises(duckdb.IOException, match="cannot write parquet"):
+        deliver(result, tmp_path)
+    assert list(tmp_path.iterdir()) == []  # staging removed, nothing moved into place

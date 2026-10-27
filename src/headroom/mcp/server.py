@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from pathlib import Path
+
+# export.deliver writes run_manifest<suffix>.json alongside scores<suffix>.parquet
+_SCORES_PARQUET = re.compile(r"scores((?:\.INTERNAL(?:\.synthetic)?)?)\.parquet")
 
 
 def _assert_manifest_shareable(scores_parquet: Path) -> None:
@@ -9,10 +14,16 @@ def _assert_manifest_shareable(scores_parquet: Path) -> None:
     so it must honor the same public-only guarantee as export: a scores parquet may
     only be served if its sibling run manifest says the run was shareable. A synthetic
     or CEII-tainted run (mode != "shareable") is refused here rather than served as if
-    it were real. Fail closed when no manifest is found."""
-    # export.deliver writes run_manifest<suffix>.json alongside scores<suffix>.parquet
-    suffix = scores_parquet.name[len("scores"):-len(".parquet")]
-    manifest_path = scores_parquet.with_name(f"run_manifest{suffix}.json")
+    it were real. Fail closed when no manifest is found, when the file is not named as
+    an export's scores parquet, or when its bytes are not the ones the manifest
+    records (A14)."""
+    match = _SCORES_PARQUET.fullmatch(scores_parquet.name)
+    if match is None:
+        raise RuntimeError(
+            f"Refusing to serve {scores_parquet}: not an export's scores parquet "
+            "(scores[.INTERNAL[.synthetic]].parquet). Fail closed."
+        )
+    manifest_path = scores_parquet.with_name(f"run_manifest{match.group(1)}.json")
     if not manifest_path.exists():
         raise RuntimeError(
             f"Refusing to serve {scores_parquet}: no sibling run manifest "
@@ -24,6 +35,18 @@ def _assert_manifest_shareable(scores_parquet: Path) -> None:
             f"Refusing to serve {scores_parquet}: run mode is "
             f"{manifest.get('mode')!r} (public_only={manifest.get('public_only')}). "
             f"Only a shareable, all-public run may be exposed via MCP."
+        )
+    recorded = ((manifest.get("outputs") or {}).get("parquet") or {}).get("sha256")
+    if not recorded:
+        raise RuntimeError(
+            f"Refusing to serve {scores_parquet}: its run manifest records no parquet "
+            "digest to check it against. Fail closed."
+        )
+    actual = hashlib.sha256(scores_parquet.read_bytes()).hexdigest()
+    if actual != recorded:
+        raise RuntimeError(
+            f"Refusing to serve {scores_parquet}: its sha256 {actual[:12]}... is not the "
+            f"{recorded[:12]}... its run manifest records. Fail closed."
         )
 
 
@@ -68,6 +91,7 @@ def build_server(scores_parquet: str | Path = "data/processed/scores.parquet"):
         which follows the run's ranking: composite or EV). Show get_shown as the
         recommended GET: where get_resolved is false, public evidence cannot tell the
         GETs in get_set apart."""
+        _assert_manifest_shareable(scores_parquet)  # the file may have changed since
         return top_flowgates_rows(scores_parquet, limit)
 
     return mcp  # pragma: no cover

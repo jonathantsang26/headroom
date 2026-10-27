@@ -234,13 +234,14 @@ def _json_bytes(obj) -> bytes:
     return json.dumps(obj, indent=2).encode("utf-8")
 
 
-_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\uff1d")  # \uff1d: full-width =
 
 
 def _cell(value):
     """Upstream text (constraint and facility names) is written so a spreadsheet
-    shows it rather than evaluating it as a formula."""
-    if isinstance(value, str) and value.startswith(_FORMULA_START):
+    shows it rather than evaluating it as a formula. A spreadsheet looks past leading
+    spaces and newlines, so the check does too."""
+    if isinstance(value, str) and value.lstrip(" \n").startswith(_FORMULA_START):
         return "'" + value
     return value
 
@@ -257,8 +258,9 @@ def _csv_bytes(rows: list[dict]) -> bytes:
 
 def _materialize_parquet(json_path: Path, parquet_path: Path) -> str | None:
     """Write a queryable Parquet of the ranked rows via DuckDB (Decision 2: keep
-    outputs cleanly queryable so an MCP server is a 1-day add). Best-effort;
-    returns the file's sha256, or None when it could not be written."""
+    outputs cleanly queryable so an MCP server is a 1-day add). Returns the file's
+    sha256, or None when DuckDB is not installed; a DuckDB failure raises, so the
+    export fails rather than ships without the parquet the MCP server reads."""
     try:
         import duckdb
     except ImportError:  # pragma: no cover
@@ -275,8 +277,6 @@ def _materialize_parquet(json_path: Path, parquet_path: Path) -> str | None:
         digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
         os.replace(tmp, parquet_path)
         return digest
-    except Exception:  # pragma: no cover - depends on filesystem/DuckDB state
-        return None
     finally:
         tmp.unlink(missing_ok=True)
 
