@@ -92,11 +92,13 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
         root = st.sidebar.text_input("Runs folder", RUNS_ROOT)
         dirs = list_run_dirs(root)
         if not dirs:
-            st.info(f"No run directories under `{root}`. Write one with "
-                    "`headroom run --out DIR`, or pick the synthetic fixture source.")
+            st.info(f"No run in `{root}`: neither it nor a folder directly under it holds a "
+                    "readable run_manifest*.json. Write one with `headroom run --out DIR`, "
+                    "or pick the synthetic fixture source.")
             st.stop()
-        chosen = st.sidebar.selectbox("Run", dirs, index=len(dirs) - 1,
-                                      format_func=lambda p: p.name)
+        chosen = st.sidebar.selectbox(
+            "Run", dirs, index=len(dirs) - 1,
+            format_func=lambda p: f"{p} (this folder)" if p == Path(root) else p.name)
         # Checked on every rerun (cheap), so a file changed since is refused, not served.
         try:
             run = load_run_dir(chosen)
@@ -163,8 +165,9 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
     st.markdown(_legend_html(zip(legend["get_shown"], legend["color"])),
                 unsafe_allow_html=True)
     if result is None and seg_df["get_resolved"].isna().any():
-        st.caption("This run predates get_shown: its rows show recommended_get as written, "
-                   "with the evidence's GET set unknown.")
+        st.caption("This run predates get_shown, so it does not record which GETs the "
+                   "evidence leaves open: each row shows recommended_get, the rule's pick, "
+                   "in grey.")
     geo = view[view["has_geometry"]]
     if seg_df["has_geometry"].any():
         st.caption(
@@ -229,7 +232,9 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
         hide_index=True,
         column_config={
             "get_shown": st.column_config.TextColumn(
-                "get_shown", help="The GET the evidence resolves, or every GET it leaves open"),
+                "get_shown", help="The GET the evidence resolves, or every GET it leaves "
+                                  "open; in grey, the rule's pick where the run did not "
+                                  "record the set"),
             "ev_get": st.column_config.TextColumn(
                 "EV pick", help="ev_recommended_get: the GET contributing most to ev_mean"),
             "ev_mean": st.column_config.NumberColumn("ev_mean $M/yr", format="%.2f"),
@@ -255,6 +260,10 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
             if d["get_resolved"] is False:
                 notes.append("The evidence does not separate these GETs; the rule's "
                              f"tie-break (recommended_get) is {d['recommended_get']}.")
+            elif d["get_resolved"] is None and result is None:
+                notes.append("This run does not record which GETs the evidence leaves open; "
+                             "recommended_get is the rule's pick, which for a real SPP "
+                             "flowgate is a tie-break among several.")
             if d.get("ev_get") and d.get("ev_mean") is not None:
                 notes.append(f"EV pick (ev_recommended_get): {d['ev_get']}.")
             if notes:
@@ -281,9 +290,13 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
             # a finished run's files record each signal's expected value only
             st.dataframe(pd.DataFrame(sig_rows).dropna(axis=1, how="all"), hide_index=True)
             if d["decision"]:
+                decision = pd.DataFrame(d["decision"]).dropna(axis=1, how="all")
                 st.caption("The decision split: how often each option is the one deployed "
-                           "(p_best), and its part of ev_mean in $M/yr (they sum to it).")
-                st.dataframe(pd.DataFrame(d["decision"]), hide_index=True)
+                           "(p_best)" + (", and its part of ev_mean in $M/yr (they sum to it)."
+                                         if "ev_from_musd" in decision else
+                                         ". This run does not record each option's part of "
+                                         "ev_mean."))
+                st.dataframe(decision, hide_index=True)
             st.caption(f"provenance: {d['provenance']}")
 
     # ---- export (gate-decided mode); a finished run is already exported ----

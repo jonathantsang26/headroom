@@ -16,6 +16,12 @@ MANIFEST_MODES = {
 }
 # The files the map reads; every other recorded output is checked too.
 _REQUIRED = ("scores_json", "shortlist_json")
+# What the map reads from every corridor row (map_data._segment, run_corridor_detail).
+_CORRIDOR_KEYS = (
+    "physical_corridor", "representative_flowgate", "flowgates", "n_flowgates",
+    "recommended_get", "p_top_k", "composite_lo", "composite_expected", "composite_hi",
+    "provenance",
+)
 
 
 class RunDirError(ValueError):
@@ -55,13 +61,24 @@ class FinishedRun:
         return self.manifest["n_constraints"]
 
 
+def _holds_manifest(path: Path) -> bool:
+    try:
+        return path.is_dir() and any((path / name).is_file() for name in MANIFEST_MODES)
+    except OSError:  # a directory this process cannot read is not offered
+        return False
+
+
 def list_run_dirs(root: str | Path) -> list[Path]:
-    """The directories directly under `root` that hold a run manifest, sorted."""
+    """The run directories at `root`: `root` itself when it holds a run manifest (as
+    `headroom run --out data/processed` leaves it), then the directories directly
+    under it that do, sorted. Directories that cannot be read are skipped."""
     root = Path(root)
-    if not root.is_dir():
-        return []
-    return sorted(p for p in root.iterdir()
-                  if p.is_dir() and any((p / name).is_file() for name in MANIFEST_MODES))
+    try:
+        children = list(root.iterdir())
+    except OSError:  # missing, not a directory, or unreadable
+        children = []
+    return ([root] if _holds_manifest(root) else []) + sorted(
+        p for p in children if _holds_manifest(p))
 
 
 def load_run_dir(path: str | Path) -> FinishedRun:
@@ -114,10 +131,26 @@ def load_run_dir(path: str | Path) -> FinishedRun:
         raise RunDirError(f"Run files differ from the sha256s in {manifest_name}: {differ}")
 
     # parse the bytes that were hashed, not a second read
-    scores = json.loads(data["scores_json"])
-    shortlist = json.loads(data["shortlist_json"])
+    scores = _rows(outputs["scores_json"]["path"], data["scores_json"], ("constraint_id",))
+    shortlist = _rows(outputs["shortlist_json"]["path"], data["shortlist_json"], _CORRIDOR_KEYS)
     if len(scores) != manifest.get("n_constraints"):
         raise RunDirError(f"{outputs['scores_json']['path']} holds {len(scores)} flowgates; "
                           f"the manifest records {manifest.get('n_constraints')}")
     return FinishedRun(path=path, manifest=manifest, scores=scores, shortlist=shortlist,
                        digests=digests)
+
+
+def _rows(name: str, blob: bytes, keys: tuple[str, ...]) -> list[dict]:
+    """A recorded file's rows: a JSON list of objects, each carrying `keys`. A file
+    whose digest matches but whose content is not that is refused, not displayed."""
+    try:
+        rows = json.loads(blob)
+    except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError
+        raise RunDirError(f"{name} is not valid JSON: {exc}") from exc
+    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+        raise RunDirError(f"{name} is not a list of rows")
+    for i, row in enumerate(rows):
+        missing = [k for k in keys if k not in row]
+        if missing:
+            raise RunDirError(f"{name} row {i} has no {missing}")
+    return rows

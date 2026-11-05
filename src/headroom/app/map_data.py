@@ -101,10 +101,12 @@ def corridor_segments(result: PipelineResult) -> list[dict]:
 
 def shown_from_row(row: dict) -> dict:
     """get_shown/get_resolved/get_set as an exported row records them (get_set
-    `;`-separated). A run exported before they existed shows recommended_get, with
-    the evidence's set unknown, not resolved."""
+    `;`-separated). A run exported before they existed did not record which GETs the
+    evidence leaves open: it shows recommended_get labelled as the rule's pick, which
+    no GET color matches (grey), since the set is unknown, not resolved."""
     if "get_shown" not in row:
-        return {"get_shown": row["recommended_get"], "get_resolved": None, "get_set": None}
+        return {"get_shown": f"{row['recommended_get']} (rule's pick; GET set not recorded)",
+                "get_resolved": None, "get_set": None}
     gets = row.get("get_set")
     return {"get_shown": row["get_shown"], "get_resolved": row.get("get_resolved"),
             "get_set": gets.split(";") if isinstance(gets, str) else gets}
