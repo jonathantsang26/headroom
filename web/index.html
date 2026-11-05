@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Headroom · SPP Congestion Screening</title>
+  <meta name="description" content="Headroom ranks SPP transmission flowgates by the expected value of deploying grid-enhancing technologies, from public data only, with provenance on every value and a replayable run." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 5 22h3l1.2-4h5.6l1.2 4h3L12 2Z' fill='%2329251a'/%3E%3Cpath d='M4 8h16' stroke='%23d1654b' stroke-width='2'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2 5 22h3l1.2-4h5.6l1.2 4h3L12 2Z" fill="#29251a" />
+      <path d="M10 14h4l-2-6Z" fill="#dedbcc" />
+      <path d="M3 8h18" stroke="#d1654b" stroke-width="2" />
+      <path d="M6 12.5h12" stroke="#c0563a" stroke-width="1.4" opacity=".7" />
+    </svg>
+    <span class="name">Headroom</span>
+  </div>
+  <span class="sub">Transmission Congestion Screening</span>
+  <span class="vsep"></span>
+  <span class="pick">SPP <span class="muted">· Southwest Power Pool</span></span>
+  <span class="dates">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" /></svg>
+    2025 day-ahead market
+  </span>
+  <nav class="seg" aria-label="View">
+    <button class="on" data-view="screen">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13h12M4 13V8M8 13V4M12 13V6" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>Screening
+    </button>
+    <button data-view="prov">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="4" r="1.8" fill="none" stroke="currentColor" /><circle cx="12" cy="4" r="1.8" fill="none" stroke="currentColor" /><circle cx="8" cy="12" r="1.8" fill="none" stroke="currentColor" /><path d="M5.2 5.4 7 10.4M10.8 5.4 9 10.4" stroke="currentColor" /></svg>Provenance
+    </button>
+    <button data-view="about">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" /><path d="M8 7v4.5M8 4.6v.2" stroke="currentColor" stroke-width="1.5" /></svg>About
+    </button>
+  </nav>
+</header>
+
+<div class="body">
+  <main class="left">
+    <section class="stage" aria-label="SPP transmission map">
+      <div class="map" id="map"><div class="loading">Loading topology…</div></div>
+
+      <button class="compass" id="fit" title="Reset view" aria-label="Reset view">
+        <span>N</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 18 19l-6-3.5L6 19Z" fill="#29251a" /></svg>
+      </button>
+
+      <div class="hud key" id="key">
+        <div class="hud-head"><span>Map key</span><button id="key-toggle">Hide details</button></div>
+        <ul>
+          <li><span class="chip fact">FACT</span>345 kV lines · HIFLD Open<span class="sw" style="background:#c0563a"></span><span class="n">239</span></li>
+          <li><span class="chip fact">FACT</span>230 kV lines<span class="sw" style="background:#5c5444"></span><span class="n">176</span></li>
+          <li><span class="chip fact">FACT</span>115–161 kV lines<span class="sw" style="background:#9a917f"></span><span class="n">3,014</span></li>
+          <li><span class="chip fact">FACT</span>Generation · EIA-860<span class="dot" style="background:#678352"></span><span class="n">93.5 GW</span></li>
+          <li><span class="chip fact">FACT</span>Queue requests · SPP<span class="ring"></span><span class="n">106</span></li>
+          <li><span class="chip none">UNOBSERVED</span>Flowgate locations · CEII</li>
+        </ul>
+      </div>
+
+      <div class="stage-btns">
+        <button id="zoom-in" aria-label="Zoom in">+</button>
+        <button id="zoom-out" aria-label="Zoom out">−</button>
+      </div>
+      <div class="scale-note">SWPP footprint · 3,429 lines · 2,696 buses · drag to pan, scroll to zoom</div>
+    </section>
+
+    <section class="dock">
+      <div class="dock-top">
+        <div class="panel shortlist">
+          <div class="ph">
+            <h2>Shortlist</h2>
+            <span class="muted">Expected net value of a GET decision · top 10 of 103 · click a row</span>
+          </div>
+          <div class="table-wrap">
+            <table id="shortlist">
+              <thead>
+                <tr><th>#</th><th>Corridor (champion flowgate)</th><th class="r">2025 DA rent</th><th class="r">Months</th><th>Expected net value, $M/yr · p5 to p95</th><th>GET</th><th class="r">P(none)</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel findings">
+          <div class="ph"><h2>Key Findings</h2><span class="muted">7</span></div>
+          <ul class="events">
+            <li><i class="ic ic-fact"></i><div><b>$2.4B of 2025 congestion</b> across 2,072 binding flowgates <span class="chip fact">FACT</span><small>SPP congestion by constraint, 12 monthly archives</small></div></li>
+            <li><i class="ic ic-range"></i><div><b>53 flowgates have a GET worth deploying</b> <span class="chip range">RANGE</span><small>48 corridors · $11.4M/yr in total</small></div></li>
+            <li><i class="ic ic-range"></i><div><b>DLR for 45, topology optimization for 8</b> <span class="chip range">RANGE</span><small>Power-flow control never: negative for 99 of the top 103</small></div></li>
+            <li><i class="ic ic-range"></i><div><b>The leaders are stable</b> <span class="chip range">RANGE</span><small>≥7 of the top 10 and ≥16 of the top 20 hold under every perturbation</small></div></li>
+            <li><i class="ic ic-warn"></i><div><b>The count worth deploying is not</b> <span class="chip range">RANGE</span><small>16 to 114 against 53; driven by DLR and TO costs and the haircut</small></div></li>
+            <li><i class="ic ic-none"></i><div><b>Half the composite weight is unobserved</b> <span class="chip none">UNOBSERVED</span><small>Loading, demand pressure and radial need the CEII bus map</small></div></li>
+            <li><i class="ic ic-fact"></i><div><b>Replay rebuilds the run byte for byte</b> <span class="chip fact">FACT</span><small>Ranking digest a6750ade… at commit 45a79a0</small></div></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="st-head"><span>Flowgates scored</span><b>2,072</b></div>
+          <div class="bar3"><span style="flex:1682;background:#9a917f"></span><span style="flex:379;background:#5c5444"></span><span style="flex:11;background:#c0563a"></span></div>
+          <div class="st-foot"><span class="chip fact">FACT</span>1,682 lines · 379 transformers · 11 interfaces</div>
+        </div>
+        <div class="stat">
+          <div class="st-head"><span>2025 DA congestion</span><b>$2,408.7M</b></div>
+          <div class="bar3"><span style="flex:1957.8;background:#5c5444"></span><span style="flex:450.9;background:#d3a488"></span></div>
+          <div class="st-foot"><span class="chip fact">FACT</span>1.23× settled DA collected ($1,957.8M)</div>
+        </div>
+        <div class="stat">
+          <div class="st-head"><span>Worth a GET</span><b>53</b></div>
+          <div class="bar3"><span style="flex:53;background:#c0563a"></span><span style="flex:2001;background:#d1cebf"></span></div>
+          <div class="st-foot"><span class="chip range">RANGE</span>of 2,054 with rent · $11.4M/yr · 48 corridors</div>
+        </div>
+        <div class="stat">
+          <div class="st-head"><span>Monte Carlo</span><b>10,000</b></div>
+          <div class="bar3"><span style="flex:7;background:#678352"></span><span style="flex:3;background:#d1cebf"></span></div>
+          <div class="st-foot"><span class="chip range">RANGE</span>draws · seed 20260630 · ≥7/10 leaders hold</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="rail">
+    <!-- Screening -->
+    <div data-rail="screen">
+      <section class="card">
+        <div class="tabs" role="tablist">
+          <button class="on" data-tab="layers">Layers</button>
+          <button data-tab="ranking">Ranking</button>
+          <button data-tab="evidence">Evidence</button>
+          <button data-tab="method">Method</button>
+        </div>
+
+        <div data-pane="layers">
+          <ul class="layers" id="layers">
+            <li><input type="checkbox" checked data-layer="kv345" /><span class="thumb" style="background:linear-gradient(135deg,#c0563a,#e08a68)"></span><span class="lbl">345 kV lines</span><input type="range" class="slider" min="0" max="1" step="0.05" value="1" data-op="kv345" /><span class="pct">100%</span></li>
+            <li><input type="checkbox" checked data-layer="kv230" /><span class="thumb" style="background:linear-gradient(135deg,#3f392d,#7d7462)"></span><span class="lbl">230 kV lines</span><input type="range" class="slider" min="0" max="1" step="0.05" value="0.9" data-op="kv230" /><span class="pct">90%</span></li>
+            <li><input type="checkbox" checked data-layer="kv115" /><span class="thumb" style="background:linear-gradient(135deg,#8f8a7c,#bdb5a3)"></span><span class="lbl">115–161 kV lines</span><input type="range" class="slider" min="0" max="1" step="0.05" value="0.7" data-op="kv115" /><span class="pct">70%</span></li>
+            <li><input type="checkbox" checked data-layer="gen" /><span class="thumb" style="background:radial-gradient(circle at 40% 45%,#678352 0 30%,transparent 32%),radial-gradient(circle at 70% 70%,#678352 0 16%,transparent 18%),#cfd6c0"></span><span class="lbl">Generation · EIA-860</span><input type="range" class="slider" min="0" max="1" step="0.05" value="0.6" data-op="gen" /><span class="pct">60%</span></li>
+            <li><input type="checkbox" checked data-layer="queue" /><span class="thumb" style="background:radial-gradient(circle,transparent 0 34%,#d1654b 36% 46%,transparent 48%),#e6dccd"></span><span class="lbl">Queue requests</span><input type="range" class="slider" min="0" max="1" step="0.05" value="0.9" data-op="queue" /><span class="pct">90%</span></li>
+            <li class="off" title="SPP names monitored elements by market-model bus; that bus map is CEII"><input type="checkbox" disabled /><span class="thumb" style="background:repeating-linear-gradient(45deg,#cfc9bb 0 3px,#e2ddd1 3px 6px)"></span><span class="lbl">Flowgate locations <span class="mono">· CEII</span></span></li>
+          </ul>
+        </div>
+
+        <div data-pane="ranking" hidden>
+          <div class="subhead"><h3 id="sel-title">LN OSAGE_OG - WEBBTAP4</h3><span class="chip range" id="sel-get">DLR</span></div>
+          <div class="kv" id="sel-rows"></div>
+          <div class="ev-detail" id="sel-ev"></div>
+          <div class="subhead"><h3>GET to pursue</h3><span class="muted">53 flowgates</span></div>
+          <div class="hbars">
+            <div><span>Dynamic line rating</span><i style="width:84.9%"></i><b>45</b></div>
+            <div><span>Topology optimization</span><i style="width:15.1%"></i><b>8</b></div>
+            <div><span>Power-flow control</span><i style="width:0%"></i><b>0</b></div>
+          </div>
+          <div class="subhead"><h3>Value tiers</h3><span class="muted">of 53</span></div>
+          <div class="hbars">
+            <div><span>&gt; $10k/yr</span><i style="width:88.7%"></i><b>47</b></div>
+            <div><span>&gt; $100k/yr</span><i style="width:37.7%"></i><b>20</b></div>
+            <div><span>&gt; $1M/yr</span><i style="width:7.5%"></i><b>4</b></div>
+          </div>
+          <p class="note">All 53 carry at least $5.5M of 2025 rent. Relief shares near 8%, a haircut near 0.35 and costs of $0.1–0.9M/yr leave value only where congestion is large and recurs.</p>
+        </div>
+
+        <div data-pane="evidence" hidden>
+          <div class="subhead"><h3>Input tables</h3><span class="muted">snapshot 2026-10-13.r2</span></div>
+          <ul class="cov">
+            <li><span>Binding constraints</span><span class="chip mid">PARTIAL</span></li>
+            <li><span>Congestion by constraint</span><span class="chip mid">PARTIAL</span></li>
+            <li><span>HIFLD lines</span><span class="chip fact">OBSERVED</span></li>
+            <li><span>Buses (EIA-860 attached)</span><span class="chip fact">OBSERVED</span></li>
+            <li><span>EIA-930 load</span><span class="chip fact">OBSERVED</span></li>
+            <li><span>FERC Form 1 lines</span><span class="chip mid">PARTIAL</span></li>
+            <li><span>Interconnection queue</span><span class="chip mid">PARTIAL</span></li>
+            <li><span>EIA line voltages</span><span class="chip none">UNOBSERVED</span></li>
+            <li><span>SPP ITP planning</span><span class="chip none">UNOBSERVED</span></li>
+          </ul>
+          <p class="note">An unobserved value is carried as unobserved, never as zero. Every number on this page is either a <span class="chip fact">FACT</span> read from a pinned public file or a <span class="chip range">RANGE</span> reconstructed with its lineage attached.</p>
+        </div>
+
+        <div data-pane="method" hidden>
+          <ol class="steps">
+            <li><b>Pin the inputs.</b> Nine public tables are stamped and SHA256-verified into one snapshot. A live run refuses stamps that differ from the pins.</li>
+            <li><b>Score every binding flowgate.</b> 2,072 elements from SPP's 2025 day-ahead binding-constraint archives roll up to 892 corridors.</li>
+            <li><b>Forecast rent.</b> 2025 dollars × share of months binding × a persistence ratio from a held-out-months backtest (66% of held-out dollars captured, against 64% for raw annual).</li>
+            <li><b>Decide under uncertainty.</b> For each flowgate: find which GETs apply, then deploy the one with the highest expected net value, or none. Relief, haircut, cost and next year's congestion are drawn 10,000 times from cited priors.</li>
+            <li><b>Gate the export.</b> Lineage that touches synthetic or non-publishable data blocks a shareable export.</li>
+            <li><b>Replay.</b> <span class="mono">headroom reproduce</span> rebuilds the ranking, the export decision and byte-identical outputs from the manifest.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="ch"><h2>Run Overview</h2></div>
+        <div class="kv">
+          <div><span>Region</span><span>SPP · SWPP balancing authority</span></div>
+          <div><span>Market data</span><span>2025 day-ahead, 12 monthly archives</span></div>
+          <div><span>Snapshot</span><span class="mono">2026-10-13.r2</span></div>
+          <div><span>Verified at</span><span class="mono">45a79a0</span> · Oct 13, 2026</div>
+          <div><span>Export</span><span><span class="chip fact">SHAREABLE</span> 0 scores blocked</span></div>
+          <div><span>Ranking digest</span><span class="mono">a6750ade…</span></div>
+          <div><span>Priors</span><span class="mono">spp-get-priors-2026-10-13.2</span></div>
+          <div><span>Keys needed</span><span>None. Public sources only.</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="ch"><h2>Cross-check</h2><span class="chip fact">FACT</span></div>
+        <div class="xc">
+          <div><span>Posted by constraint</span><b>$2,408.7M</b></div>
+          <div><span>Settled DA collected</span><b>$1,957.8M</b></div>
+          <div><span>Ratio</span><b>1.23×</b></div>
+        </div>
+        <p class="note">The ratio is consistent month to month. A second open-source screen's FERC totals reproduce exactly; none of its 8 SPP corridors reach this shortlist, because it ranks the size of 345 kV+ assets while this ranks where SPP's market actually bound.</p>
+      </section>
+    </div>
+
+    <!-- Provenance -->
+    <div data-rail="prov" hidden>
+      <section class="card">
+        <div class="ch"><h2>Sources</h2><span class="muted">no keys, no accounts</span></div>
+        <ul class="srcs">
+          <li><b>SPP day-ahead binding constraints</b><span class="mono">spp_da_bc_monthly_2025</span><small>Hourly shadow prices, SPP Portal. Non-commercial use with citation to SPP.</small></li>
+          <li><b>SPP congestion by constraint</b><span class="mono">spp_cbc_2025</span><small>Monthly congestion cost by binding constraint, SPP Portal.</small></li>
+          <li><b>SPP TCR funding</b><span class="mono">spp_tcr_funding_2025</span><small>Monthly TCR funding by constraint, SPP Portal.</small></li>
+          <li><b>SPP interconnection queue</b><span class="mono">spp_giq_2026-10-12</span><small>682 active requests, 140.8 GW; 106 mapped to a bus.</small></li>
+          <li><b>HIFLD Open transmission lines</b><span class="mono">hifld_open_2023-09-05</span><small>3,429 lines in the SWPP footprint.</small></li>
+          <li><b>EIA-860 via PUDL</b><span class="mono">pudl_v2024.11.0:eia860_2024</span><small>93.5 GW of generation attached to buses. CC-BY 4.0, Catalyst Cooperative.</small></li>
+          <li><b>FERC Form 1 via PUDL</b><span class="mono">pudl_v2024.11.0</span><small>1,898 rows for 16 SPP filers, report year 2023.</small></li>
+          <li><b>EIA-930</b><span class="mono">eia930_2024</span><small>SWPP hourly load. Public domain.</small></li>
+        </ul>
+      </section>
+      <section class="card">
+        <div class="ch"><h2>Export Gate</h2><span class="chip fact">PASSED</span></div>
+        <div class="kv">
+          <div><span>Scores checked</span><span>2,072 · 0 blocked</span></div>
+          <div><span>Input tables</span><span>9 · 0 blocked</span></div>
+          <div><span>Lineage values</span><span>All publishable</span></div>
+          <div><span>Notice</span><span>Every source and its terms ship with the export</span></div>
+        </div>
+      </section>
+      <section class="card">
+        <div class="ch"><h2>Replay</h2><span class="chip fact">BYTE-IDENTICAL</span></div>
+        <ul class="ticks">
+          <li>Ranking (digest <span class="mono">a6750ade…</span>)</li>
+          <li>Export decision</li>
+          <li>Scores, shortlist and CSV</li>
+          <li>Quality report and NOTICE</li>
+        </ul>
+        <p class="note">Replay passes only at a commit whose pipeline code and source pins match the run manifest.</p>
+      </section>
+    </div>
+
+    <!-- About -->
+    <div data-rail="about" hidden>
+      <section class="card">
+        <div class="ch"><h2>What this is</h2></div>
+        <div class="prose">
+          <p>SPP's day-ahead market posted $2.4B of congestion on its bottleneck elements in 2025. Grid-enhancing technologies like dynamic line rating can relieve some of it for a fraction of the cost of new lines, but where they would pay off is rarely worked out from public data.</p>
+          <p>Headroom answers that from public data only. It ranks every flowgate that bound in SPP's 2025 market by the expected net value of a GET decision, keeps the uncertainty in the answer, and refuses to publish anything it cannot trace to a public source.</p>
+        </div>
+      </section>
+      <section class="card">
+        <div class="ch"><h2>What it does not know</h2></div>
+        <ul class="ticks warn">
+          <li>Where SPP's monitored elements are. The bus map is CEII, so loading, demand pressure and radial stay unobserved.</li>
+          <li>SPP's planning projects. The ITP is published as PDF only.</li>
+          <li>Real-time congestion or a second market year. Forward rent is calibrated within 2025.</li>
+        </ul>
+      </section>
+      <section class="card">
+        <div class="ch"><h2>Project</h2></div>
+        <div class="kv">
+          <div><span>Built by</span><span>Jonathan Tsang</span></div>
+          <div><span>Code</span><span><a href="https://github.com/jonathantsang26/headroom" target="_blank" rel="noopener">jonathantsang26/headroom ↗</a></span></div>
+          <div><span>Stack</span><span>Python · NumPy · Pydantic · DuckDB</span></div>
+          <div><span>Run it</span><span class="mono">headroom run --region spp</span></div>
+        </div>
+      </section>
+    </div>
+  </aside>
+</div>
+
+<footer class="foot">
+  Data: SPP Portal (non-commercial use with citation to SPP) · HIFLD Open · EIA-860, EIA-930 · FERC Form 1 via PUDL (CC-BY 4.0, Catalyst Cooperative). Figures are from the verified run of Oct 13, 2026.
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
