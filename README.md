@@ -17,7 +17,9 @@ python3 -m venv .venv
 .venv/bin/python -m pytest
 .venv/bin/headroom run --region spp-synth --out data/processed
 ```
-Map: install `.[app]`, then run `streamlit run src/headroom/app/streamlit_app.py`.
+Map: install `.[app]`, then run `streamlit run src/headroom/app/streamlit_app.py`. It shows a
+finished run from `data/processed` or a folder directly under it (refused unless every file
+matches its manifest's sha256), or re-runs a synthetic fixture region, labelled fabricated.
 
 ## Layout
 ```

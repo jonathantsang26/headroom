@@ -490,7 +490,7 @@ None. No finding produced a non-publishable value in a shareable export with cur
 - **Recommendation:** a per-table schema registry validated at write and load, naming the table and row on failure. Require `set(weights) == SIGNAL_NAMES`. Key planning by (cid, plan).
 
 #### A33 · The Streamlit map cannot show the real run
-- **CONFIRMED · medium.** Both verifiers said medium. Not known; part follows from CEII. **Status: Open.**
+- **CONFIRMED · medium.** Both verifiers said medium. Not known; part follows from CEII. **Status: Partly.** The map now reads a finished run directory (`app/run_dir.py`), refused unless it holds one manifest whose name matches its mode and every recorded output matches its sha256, and labels it with its mode, snapshot and output digest. The synthetic regions are cached per region and labelled fabricated; a refused export is shown, not raised. A run without coordinates shows no map. Still open: the region list is hard-coded and miso-synth is still the relabelled spp-synth fixture.
 - **Files:** `app/streamlit_app.py:37-38,126`, `app/map_data.py:59`, `ingest/region.py:27-30`, `tests/test_phase5_reproducibility.py:52-58`, `README.md:8,17`.
 - **Evidence:**
   - Only spp-synth and miso-synth are offered, and the pipeline runs uncached (a live run takes 56–75 s).
