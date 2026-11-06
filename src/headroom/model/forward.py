@@ -21,9 +21,16 @@ use months of one year (2025). A cross-year test needs snapshots from several ye
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 
 PREDICTORS = ("annual", "months_binding_share")
+CBC_RAW_PREFIX = "raw:spp_cbc_"
+# Keys only scripts/backtest_forward_rent.py writes: a spec carrying any of them was
+# derived from a snapshot and must say which CBC files.
+_DERIVED_KEYS = ("derived_from_snapshot", "cbc_raw_sha256", "rule", "script", "backtest",
+                 "n_flowgates_with_rent")
 
 
 def validate_forward(spec: dict) -> dict:
@@ -39,6 +46,56 @@ def validate_forward(spec: dict) -> dict:
     if any(v < 0 for v in vs) or any(b < a for a, b in zip(vs, vs[1:])):
         raise ValueError("forward_rent.ratio_quantiles must be >= 0 and non-decreasing")
     return spec
+
+
+def cbc_raw_keys(raw: dict) -> list[str]:
+    """The twelve monthly CBC raw-input keys of the one data year a snapshot manifest's
+    `raw` block records."""
+    years = {k[len(CBC_RAW_PREFIX):][:4] for k in raw if k.startswith(CBC_RAW_PREFIX)}
+    if len(years) != 1:
+        raise ValueError(f"needs the CBC files of exactly one year, has {years or 'none'}")
+    year = years.pop()
+    return [f"{CBC_RAW_PREFIX}{year}{month:02d}" for month in range(1, 13)]
+
+
+def cbc_raw_sha256(raw: dict) -> str:
+    """What forward_rent.cbc_raw_sha256 pins: sha256 over the twelve monthly CBC files'
+    recorded sha256s, in month order."""
+    keys = cbc_raw_keys(raw)
+    missing = [k for k in keys if not isinstance(raw.get(k), dict) or not raw[k].get("sha256")]
+    if missing:
+        raise ValueError(f"records no sha256 for {', '.join(missing)}")
+    return hashlib.sha256("".join(raw[k]["sha256"] for k in keys).encode()).hexdigest()
+
+
+def check_forward_rent_rule(spec: dict | None, raw: dict) -> None:
+    """Fail closed when a derived forward_rent was backtested on other CBC files than
+    the ones this run's snapshot records. `raw` is the snapshot manifest's raw block;
+    the manifest is pinned by the input identity, so its recorded hashes are compared
+    without re-reading raw bytes a relocated input may not carry. A hand-specified
+    spec (no derivation keys) is not tied to an input."""
+    if spec is None or not any(k in spec for k in _DERIVED_KEYS):
+        return
+    snapshot = spec.get("derived_from_snapshot")
+    want = spec.get("cbc_raw_sha256")
+    if not want:
+        raise ValueError("forward_rent records no cbc_raw_sha256, so it cannot be tied to "
+                         "the CBC files it was derived from; re-derive it with "
+                         "scripts/backtest_forward_rent.py")
+    try:
+        got = cbc_raw_sha256(raw)
+    except ValueError as e:
+        raise ValueError(
+            f"forward_rent was derived from snapshot {snapshot} (CBC files {want[:12]}), "
+            f"but this input cannot be tied to them: its snapshot manifest {e}"
+        ) from None
+    if got != want:
+        raise ValueError(
+            f"forward_rent was derived from snapshot {snapshot} (CBC files {want[:12]}); "
+            f"this input's CBC files are {got[:12]}. Re-derive: python "
+            "scripts/backtest_forward_rent.py <snapshot> --check <scoring file>, "
+            "or run with --scoring config/scoring.yaml"
+        )
 
 
 def share(predictor: str, months_binding: int | None) -> float:

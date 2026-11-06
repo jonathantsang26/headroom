@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from headroom.export import compare_replayed_outputs, deliver
+from headroom.model.get_match import get_label
 from headroom.pipeline import run_pipeline
 from headroom.provenance.reproduce import reproduce_from_manifest
 
@@ -57,8 +58,10 @@ def _report(result, d) -> int:
         else:
             value = (f"composite={c['composite_expected']:.3f} "
                      f"[{c['composite_lo']:.3f}, {c['composite_hi']:.3f}]")
+        # the evidence's set where it leaves several GETs open, not the tie-break
+        shown = get_label(m.extras["get_set"][c["representative_flowgate"]])
         print(f"    {i:2d}. {c['physical_corridor']}  p_top_k={c['p_top_k']:.2f}  "
-              f"{value}  {c['recommended_get']}")
+              f"{value}  {shown}")
     for gap in result.quality_report.get("gaps", []):
         print(f"  gap: {gap if len(gap) <= 160 else gap[:157] + '...'}")
     if result.quality_report.get("gaps"):

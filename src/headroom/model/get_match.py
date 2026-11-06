@@ -1,7 +1,9 @@
 """7.2 Which-GET match — turns "where is congestion" into "where would WHICH GET
 pay". This module is the evidence screen: a rule over what is observed about the
-binding element. The expected-value model (model/ev.py) turns the screen into
-applicability and ranks by expected net value where a region asks for it."""
+binding element, and the set of GETs that evidence does not rule out (get_set), of
+which the rule's GET is a tie-break wherever the set holds more than one. The
+expected-value model (model/ev.py) turns the screen into applicability and ranks by
+expected net value where a region asks for it."""
 
 from __future__ import annotations
 
@@ -53,6 +55,44 @@ def recommend_get(
     # binds on its own rating with all elements in service (or after a non-branch
     # outage), mesh unknown: raising that rating is the GET that needs no topology
     return "Dynamic Line Rating"
+
+
+_ORDER: tuple[GET, ...] = ("Dynamic Line Rating", "Advanced Power Flow Control",
+                           "Topology Optimization", "Combination")
+_SHORT = {"Dynamic Line Rating": "DLR", "Advanced Power Flow Control": "APFC",
+          "Topology Optimization": "TO", "Combination": "Combination"}
+
+
+def get_set(constraint: Constraint, *, radial: bool | None, loading_observed: bool,
+            get: GET) -> list[GET]:
+    """The GETs the evidence does not rule out, in a fixed order (DLR, APFC, TO,
+    Combination). Topology observed: the DC screen saw the element and the rule
+    resolves one GET. Topology unobserved: market facts rule a GET out only through
+    the element: DLR rates overhead conductors, not transformers; APFC and TO need a
+    parallel path, which a radial line lacks. Binding pattern, contingency and breach
+    narrow nothing further, so the rule's GET there is a tie-break among these.
+    Combination (DLR with APFC) is open where both are, as in model/ev.py. The rule's
+    own GET is always in the set."""
+    if loading_observed:
+        return [get]
+    open_ = {"Dynamic Line Rating", "Advanced Power Flow Control", "Topology Optimization"}
+    if constraint.ctype == "transformer":
+        open_.discard("Dynamic Line Rating")
+    if constraint.ctype == "thermal" and radial:
+        open_ -= {"Advanced Power Flow Control", "Topology Optimization"}
+    if {"Dynamic Line Rating", "Advanced Power Flow Control"} <= open_:
+        open_.add("Combination")
+    open_.add(get)
+    return [g for g in _ORDER if g in open_]
+
+
+def get_label(gets: list[str]) -> str:
+    """The recommendation to show: the GET when the evidence resolves one, otherwise
+    every GET it leaves open ("DLR, APFC, TO or Combination")."""
+    if len(gets) == 1:
+        return gets[0]
+    short = [_SHORT[g] for g in gets]
+    return ", ".join(short[:-1]) + " or " + short[-1]
 
 
 def get_basis(constraint: Constraint, *, radial: bool | None, loading_observed: bool,

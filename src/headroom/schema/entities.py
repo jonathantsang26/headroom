@@ -140,3 +140,8 @@ class Score(BaseModel):
     get_candidates: list[str] = Field(default_factory=list)
     get_evidence: str = ""  # evidence class the applicability priors used
     get_rule: str = ""  # the evidence rule's GET (model/get_match.py)
+    # The EV layer's own pick: the option contributing most to the decision's expected
+    # value, an economics answer ("what pays here"). recommended_get stays the evidence
+    # rule's physical assignment under every ranking. None when EV is not configured or
+    # the flowgate has no observed rent.
+    ev_get: GET | None = None

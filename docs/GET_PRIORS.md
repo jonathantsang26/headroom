@@ -5,7 +5,7 @@ Companion to `config/get_priors.yaml` (version `spp-get-priors-2026-10-13.2`; re
 **Since this research.** Two changes to the EV layer postdate it:
 
 - EV now uses forward rent, R_f × months_binding/12 × a backtest ratio draw, not the observed 2025 rent (docs/FORWARD_RENT.md).
-- EV values the decision a planner can make: learn which GETs apply, then deploy the applicable GET with the highest expected net value E[u]E[h]E[R] − E[C], or nothing. It no longer floors each draw at zero, which assumed the realized relief, haircut, cost and next year's rent were known in advance. `recommended_get` is the GET contributing most to that value (the fragility noted in section 10, item 2 is gone).
+- EV values the decision a planner can make: learn which GETs apply, then deploy the applicable GET with the highest expected net value E[u]E[h]E[R] − E[C], or nothing. It no longer floors each draw at zero, which assumed the realized relief, haircut, cost and next year's rent were known in advance. `ev_recommended_get` is the GET contributing most to that value; `recommended_get` stays the evidence rule's physical assignment (the fragility noted in section 10, item 2 is gone).
 - Interfaces: the relief-size proxy that section 4.4 and 6.3 folded into applicability is now a separate `relief_scale` (DLR 0.35, TO 0.5), and applicability for interfaces is the probability alone (DLR 0.30, was 0.10; TO 0.30, was 0.15). Folding a relief discount into the probability charged the cost only where the GET was drawn applicable, so it undercharged cost.
 - C_TO's lo and hi pair the extremes of system cost and the number of flowgates N (lo: low cost over high N; hi: high cost over low N). That is a joint-extreme envelope, which section 2 avoids for DLR and APFC; its ends are wider than comparable quantiles.
 
@@ -425,6 +425,7 @@ How to read the re-run:
 2. **The recommendation output is fragile.**
    - No P exceeds 0.45, so in the scratch re-run "No cost-effective GET" was the option most often best for all of the top 103 flowgates, even though their mean EV is positive. ev.py's recommendation is the plurality option, so it will often read "none" under these priors.
    - Consider reporting p_best shares, or the best option conditional on applicability.
+   - Resolved: the EV layer's pick, `ev_recommended_get`, is the GET contributing most to ev_mean, and the export reports `p_best_*` and each option's part of ev_mean (section 10.1). Since 2026-10-23 that pick no longer replaces `recommended_get`, the evidence rule's physical assignment.
    - Raising P_DLR(line_*) by 0.25 flips 42 of the 103 to DLR, and doubling P_TO flips 17 to TO.
 3. **P_DLR for lines (the conductor-limited share)** rests on a 30-year-old, second-hand 42% (dlr-80) plus single cases. It is the main lever on line vs transformer ordering.
 4. **TO's effective u and cost denominator.**
@@ -440,6 +441,30 @@ How to read the re-run:
    - P absorbs class-specific relief differences for interfaces, because u is shared across classes.
    - The linear u x R cannot represent rent that vanishes at u = 0.05-0.10 (dlr-13, dlr-34). For production-cost value this effect sits inside h.
    - Most of the evidence is RT or simulated, while R_f is DA.
+
+### 10.1 Why the EV best bet reads DLR on every line, and what was decided (2026-10-21)
+
+Under these priors the EV layer's pick, `ev_recommended_get`, reads DLR for every line and interface with a GET worth deploying, and TO for every transformer. APFC and Combination never win it. This is not a bug: the EV best bet follows from the priors and the evidence class, not from a flowgate's own data. The data decide only whether a flowgate clears zero, and its rank, both through forward rent R.
+
+With the triangle means (E[h] = 0.327; E[u]: DLR 0.083, APFC 0.087, TO 0.080; E[C] $M/yr: DLR 0.131, APFC 1.773, TO 0.365) and the decision in model/ev.py:
+- DLR beats TO wherever both apply: mu_DLR − mu_TO = 0.0033·E[h]·R + 0.234 > 0 at any rent.
+- APFC's extra 0.003 of relief pays for its extra $1.64M/yr only above a forward rent of about $1,508M/yr. SPP 2025's largest is about $118M.
+- Combination is worth more than DLR per deployment above about $68M of forward rent. On line_n1 it applies in 0.16 of draws (0.40 × 0.40) against DLR alone in 0.24 (0.40 × 0.60), so it would hold the largest share of ev_mean only above about $138M.
+- Transformers read TO because DLR applicability there is 0.
+
+So one word hides most of the decision. On the committed 59-flowgate subset of snapshot 2026-10-13.r2, under these priors and the SPP forward-rent calibration, the four leading lines take 34–39% of ev_mean from DLR, 30–32% from Combination, 22–25% from TO and 6–12% from APFC, and nothing is deployed in about 25% of draws.
+
+The evidence rule disagrees for a different reason: it reads an N-1 branch outage as proof of a parallel path and picks APFC (model/get_match.py). It does not weigh cost. Since 2026-10-23 its pick is `recommended_get` under every ranking (`evidence_rule_get` repeats it), and the EV pick is `ev_recommended_get`, so the two answers sit side by side instead of one replacing the other.
+
+Decision on the five proposed changes:
+
+1. **Report the decision split. Adopted.** `ev_from_dlr_musd`, `ev_from_apfc_musd`, `ev_from_to_musd` and `ev_from_c_musd` (docs/OUTPUTS.md) give each option's part of ev_mean beside `p_best_none`. They are export columns carried outside `Score`, so the ranking digest does not move. They split `ev_recommended_get`, the EV layer's pick; `recommended_get` keeps its name, because downstream readers key on it, and holds the evidence rule's physical assignment. This resolves the reporting half of item 2 above.
+2. **Per-flowgate evidence for DLR relief from the binding hours. Deferred.** It is the only change that would let EV best bets differ between lines. It needs a new stamped congestion column (docs/ADAPTERS.md), a snapshot rebuild, and a cited mapping from season and hour of binding to DLR's gain over AAR, which item 6 says has no SPP measurement. It moves the digest.
+3. **Make the two pickers agree. Deferred, with a preference.** The line_n1 APFC prior (0.40) already assumes that binding after a branch outage implies a loop, but evidence_class does not separate branch from non-branch outages. Splitting line_n1 by `branch_outage` is preferred over dropping the parallel-path argument from the rule. It needs new cited applicability values and a priors version bump, and it moves the digest.
+4. **AAR shrink as a per-GET forward-rent multiplier. Deferred.** The multiplier needs a cited value and an AAR date (section 4.1, item 7). It moves the digest.
+5. **Let the same-station caution change the decision. Deferred.** The caution is a name heuristic, and element identity is CEII, so whether no GET applies is not observed. Setting DLR applicability to 0 would treat that as known. The caution stays an exported column. Changing the decision moves the digest, and one of the 53 flowgates, #5, carries the caution.
+
+Items 2 to 5 and item 8's per-GET haircut each move the ranking digest. A change that moves it must report the digest, the count worth deploying, the GET mix and the top ten before and after from a real SPP run, so each is left for a separate change.
 
 ## 11. Change log: audit items and resolutions
 
