@@ -76,15 +76,32 @@
         <div class="panel shortlist">
           <div class="ph">
             <h2>Shortlist</h2>
-            <span class="muted">Expected net value of a GET decision · top 10 of 103 · click a row</span>
+            <span class="muted" id="sl-count">103 flowgates · ranked by expected net value of a GET decision</span>
+          </div>
+          <div class="sl-tools">
+            <input type="search" id="sl-search" placeholder="Search corridor, flowgate or contingency" aria-label="Search the shortlist" />
+            <div class="mini-seg" id="sl-filter" role="group" aria-label="Filter">
+              <button class="on" data-f="all">All <span>103</span></button>
+              <button data-f="worth">Worth a GET <span>53</span></button>
+              <button data-f="watch">Watch list <span>50</span></button>
+            </div>
           </div>
           <div class="table-wrap">
             <table id="shortlist">
               <thead>
-                <tr><th>#</th><th>Corridor (champion flowgate)</th><th class="r">2025 DA rent</th><th class="r">Months</th><th>Expected net value, $M/yr · p5 to p95</th><th>GET</th><th class="r">P(none)</th></tr>
+                <tr>
+                  <th data-sort="rank" class="sorted asc">#</th>
+                  <th>Corridor</th>
+                  <th data-sort="rent" class="r">2025 DA rent</th>
+                  <th data-sort="months" class="r">Months</th>
+                  <th data-sort="ev">Expected net value, $M/yr · p5 to p95</th>
+                  <th>GET</th>
+                  <th data-sort="none" class="r">P(none)</th>
+                </tr>
               </thead>
               <tbody></tbody>
             </table>
+            <div class="empty" id="sl-empty" hidden>No rows match.</div>
           </div>
         </div>
 
@@ -150,7 +167,7 @@
         </div>
 
         <div data-pane="ranking" hidden>
-          <div class="subhead"><h3 id="sel-title">LN OSAGE_OG - WEBBTAP4</h3><span class="chip range" id="sel-get">DLR</span></div>
+          <div class="subhead"><h3 id="sel-title">#1 LN OSAGE_OG - WEBBTAP4</h3><span class="chip range" id="sel-get">DLR</span></div>
           <div class="kv" id="sel-rows"></div>
           <div class="ev-detail" id="sel-ev"></div>
           <div class="subhead"><h3>GET to pursue</h3><span class="muted">53 flowgates</span></div>

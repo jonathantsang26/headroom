@@ -1,20 +1,23 @@
-// Top 10 of the verified SPP run (snapshot 2026-10-13.r2, commit 45a79a0).
-const SHORTLIST = [
-  {name: 'LN OSAGE_OG - WEBBTAP4', rent: 97.0, months: 12, ev: 2.22, p5: -1.55, p95: 10.65, get: 'DLR', none: 0.25},
-  {name: 'LN CLEVLND7 - CLEV_AEC', rent: 83.3, months: 12, ev: 1.76, p5: -1.55, p95: 9.04, get: 'DLR', none: 0.26},
-  {name: 'LN NEBRCTY - SUB3456', rent: 77.3, months: 12, ev: 1.62, p5: -1.67, p95: 8.57, get: 'DLR', none: 0.25},
-  {name: 'LN RUSSETT - SBROWN', rent: 64.9, months: 12, ev: 1.22, p5: -1.76, p95: 6.98, get: 'DLR', none: 0.26},
-  {name: 'LN FT_CAL - FT_CAL', rent: 42.6, months: 9, ev: 0.49, p5: -0.19, p95: 2.58, get: 'DLR', none: 0.42,
-    caution: 'Same station name at both ends: possibly a bus tie or intra-station segment, where no GET applies.'},
-  {name: 'LN OASIS - SAN_JUAN', rent: 22.0, months: 12, ev: 0.30, p5: -0.21, p95: 1.71, get: 'DLR', none: 0.42},
-  {name: 'XFMR EDWV - EDWV', rent: 60.9, months: 8, ev: 0.28, p5: -0.25, p95: 1.85, get: 'TO', none: 0.70},
-  {name: 'LN GORD - MAIZ', rent: 40.2, months: 6, ev: 0.27, p5: -0.22, p95: 1.54, get: 'DLR', none: 0.41},
-  {name: 'LN ANADARKO - GRACMONT', rent: 30.6, months: 7, ev: 0.22, p5: -0.24, p95: 1.32, get: 'DLR', none: 0.42},
-  {name: 'LN STONEWSW - TUPELO2', rent: 28.6, months: 7, ev: 0.20, p5: -0.23, p95: 1.19, get: 'DLR', none: 0.42}
-];
-const GET_NAME = {DLR: 'Dynamic line rating', TO: 'Topology optimization'};
+// The first shortlist_k rows of the verified SPP run, exported by build_data.py.
+let ROWS = [];
+const GET_NAME = {
+  DLR: 'Dynamic line rating', TO: 'Topology optimization', APFC: 'Advanced power flow control',
+  COMB: 'Combination', '': 'None worth deploying'
+};
+const EVIDENCE = {
+  line_n1: 'Line, binds under N-1', line_n1_episodic: 'Line, episodic N-1', line_base: 'Line, base case',
+  line_radial: 'Line, radial', transformer_n1: 'Transformer, binds under N-1',
+  transformer_base: 'Transformer, base case', interface: 'Interface', loopflow: 'Loop flow'
+};
+const CAUTION = {
+  same_station_ends: 'Same station name at both ends: possibly a bus tie or intra-station segment, where no GET applies.'
+};
+const FIRST_DIR = {rank: 1, rent: -1, months: -1, ev: -1, none: 1};
 const LO = -2, HI = 11;
 const pos = v => `${((v - LO) / (HI - LO)) * 100}%`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+const fmt = (v, d = 2) => (v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+const state = {q: '', f: 'all', key: 'rank', dir: 1, sel: 1};
 
 function evTrack(r) {
   const neg = r.p5 < 0 ? `<span class="neg" style="left:${pos(r.p5)};width:calc(${pos(0)} - ${pos(r.p5)})"></span>` : '';
@@ -23,47 +26,87 @@ function evTrack(r) {
     `<span class="zero" style="left:${pos(0)}"></span><span class="pt" style="left:${pos(r.ev)}"></span></span>`;
 }
 
-const fmt = (v, d = 2) => (v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+function visible() {
+  const q = state.q.trim().toLowerCase();
+  return ROWS
+    .filter(r => state.f === 'all' || (state.f === 'worth') === (r.get !== ''))
+    .filter(r => !q || `${r.corridor} ${r.flowgate} ${r.contingency}`.toLowerCase().includes(q))
+    .sort((a, b) => (a[state.key] - b[state.key]) * state.dir || a.rank - b.rank);
+}
 
-function renderShortlist() {
-  const body = document.querySelector('#shortlist tbody');
-  body.innerHTML = SHORTLIST.map((r, i) => `
-    <tr data-i="${i}" title="${r.caution ?? ''}">
-      <td class="rank">${i + 1}</td>
-      <td class="name">${r.name}${r.caution ? ' <span class="chip mid">CHECK</span>' : ''}</td>
+function render() {
+  const rows = visible();
+  document.querySelector('#shortlist tbody').innerHTML = rows.map(r => `
+    <tr data-rank="${r.rank}" class="${r.rank === state.sel ? 'sel' : ''}" title="${esc(r.flowgate)}">
+      <td class="rank">${r.rank}</td>
+      <td class="name">${esc(r.corridor)}${r.caution ? ' <span class="chip mid">CHECK</span>' : ''}</td>
       <td class="r">$${r.rent.toFixed(1)}M</td>
       <td class="r">${r.months}</td>
       <td class="ev"><span class="evbar"><b>${r.ev.toFixed(2)}</b>${evTrack(r)}</span></td>
-      <td><span class="get ${r.get === 'TO' ? 'to' : ''}">${r.get}</span></td>
+      <td>${r.get ? `<span class="get ${r.get === 'TO' ? 'to' : ''}">${r.get}</span>` : '<span class="muted">—</span>'}</td>
       <td class="r">${r.none.toFixed(2)}</td>
     </tr>`).join('');
-  body.addEventListener('click', e => {
-    const tr = e.target.closest('tr');
-    if (!tr) return;
-    select(Number(tr.dataset.i));
-    setView('screen');
-    setTab('ranking');
+  document.getElementById('sl-empty').hidden = rows.length > 0;
+  document.getElementById('sl-count').textContent =
+    `${rows.length} of ${ROWS.length} flowgates · ranked by expected net value of a GET decision`;
+  document.querySelectorAll('#shortlist th[data-sort]').forEach(th => {
+    const on = th.dataset.sort === state.key;
+    th.classList.toggle('sorted', on);
+    th.classList.toggle('asc', on && state.dir === 1);
   });
 }
 
-function select(i) {
-  const r = SHORTLIST[i];
-  document.querySelectorAll('#shortlist tbody tr').forEach(tr => tr.classList.toggle('sel', Number(tr.dataset.i) === i));
-  document.getElementById('sel-title').textContent = `#${i + 1} ${r.name}`;
-  document.getElementById('sel-get').textContent = r.get;
+function select(rank) {
+  const r = ROWS.find(x => x.rank === rank);
+  if (!r) return;
+  state.sel = rank;
+  document.querySelectorAll('#shortlist tbody tr').forEach(tr => tr.classList.toggle('sel', Number(tr.dataset.rank) === rank));
+  document.getElementById('sel-title').textContent = `#${r.rank} ${r.corridor}`;
+  document.getElementById('sel-get').textContent = r.get || 'NONE';
   const rows = [
-    ['Element', r.name.startsWith('XFMR') ? 'Transformer' : 'Line'],
-    ['Contingency', 'Binds under N-1'],
-    ['2025 DA rent', `$${r.rent.toFixed(1)}M (champion flowgate)`],
-    ['Months binding', `${r.months} of 12`],
+    ['Flowgate', `<span class="mono">${esc(r.flowgate)}</span>`],
+    ['Element', EVIDENCE[r.evidence] ?? esc(r.evidence)],
+    ['Contingency', r.contingency ? `<span class="mono">${esc(r.contingency)}</span>` : '—'],
+    ['2025 DA rent', `$${r.rent.toFixed(1)}M`],
+    ['Binding', `${r.months} of 12 months · ${r.hours.toLocaleString()} h`],
     ['GET', GET_NAME[r.get]],
     ['P(none deployed)', r.none.toFixed(2)]
   ];
-  document.getElementById('sel-rows').innerHTML = rows.map(([k, v]) => `<div><span>${k}</span><span>${v}</span></div>`).join('') +
-    (r.caution ? `<div><span>Caution</span><span>${r.caution}</span></div>` : '');
+  if (r.caution) rows.push(['Caution', CAUTION[r.caution] ?? esc(r.caution)]);
+  document.getElementById('sel-rows').innerHTML = rows.map(([k, v]) => `<div><span>${k}</span><span>${v}</span></div>`).join('');
   document.getElementById('sel-ev').innerHTML =
     `<div class="evbar"><b>${r.ev.toFixed(2)}</b>${evTrack(r)}</div>` +
     `<div class="axis"><span>p5 ${fmt(r.p5)}</span><span>expected net value, $M/yr</span><span>p95 ${fmt(r.p95)}</span></div>`;
+}
+
+async function loadShortlist() {
+  const data = await (await fetch('shortlist.json')).json();
+  ROWS = data.rows.map(v => Object.fromEntries(data.columns.map((c, i) => [c, v[i]])));
+  const counts = {all: ROWS.length, worth: ROWS.filter(r => r.get).length, watch: ROWS.filter(r => !r.get).length};
+  document.querySelectorAll('#sl-filter button').forEach(b => {
+    b.querySelector('span').textContent = counts[b.dataset.f];
+    b.addEventListener('click', () => {
+      state.f = b.dataset.f;
+      document.querySelectorAll('#sl-filter button').forEach(x => x.classList.toggle('on', x === b));
+      render();
+    });
+  });
+  document.getElementById('sl-search').addEventListener('input', e => { state.q = e.target.value; render(); });
+  document.querySelectorAll('#shortlist th[data-sort]').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    state.dir = key === state.key ? -state.dir : FIRST_DIR[key];
+    state.key = key;
+    render();
+  }));
+  document.querySelector('#shortlist tbody').addEventListener('click', e => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    select(Number(tr.dataset.rank));
+    setView('screen');
+    setTab('ranking');
+  });
+  render();
+  select(1);
 }
 
 function setView(v) {
@@ -154,8 +197,10 @@ document.getElementById('key-toggle').addEventListener('click', e => {
 });
 
 if (matchMedia('(max-width: 820px)').matches) document.getElementById('key-toggle').click();
-renderShortlist();
-select(0);
+loadShortlist().catch(err => {
+  document.getElementById('sl-empty').hidden = false;
+  document.getElementById('sl-empty').textContent = `Shortlist unavailable: ${err.message}`;
+});
 loadMap().catch(err => {
   document.getElementById('map').innerHTML = `<div class="loading">Map unavailable: ${err.message}</div>`;
 });
