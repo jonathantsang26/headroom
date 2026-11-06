@@ -65,8 +65,13 @@ CONSTRAINT_FIELDS = [
 CONGESTION_FIELDS = [
     "constraint_id", "monthly_cost_musd", "hours_binding",
     "shadow_price_sum_usd_per_mw", "max_abs_shadow_price", "breached_hours", "period",
-    "months_binding", "rent_musd", "max_month_cost_musd", "rent_basis", "flags",
+    "months_binding", "rent_musd", "max_month_cost_musd",
+    "rent_djf_musd", "rent_mam_musd", "rent_jja_musd", "rent_son_musd",
+    "rent_basis", "flags",
 ]
+# Meteorological seasons for the congestion $ by season (rent_<season>_musd): the
+# months of the data year each sum covers (December is the data year's own).
+SEASONS = {"djf": (12, 1, 2), "mam": (3, 4, 5), "jja": (6, 7, 8), "son": (9, 10, 11)}
 PLANNING_FIELDS = ["constraint_id", "plan", "proposed_fix", "assigned_cost_musd"]
 QUEUE_FIELDS = [
     "request_id", "near_bus", "mw", "fuel", "poi", "state", "to_at_poi", "status", "match",
@@ -414,6 +419,7 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             "max_abs_shadow_price": f"{round(max(a['abs']), 4):.4f}",
             "breached_hours": len(a["breached"]), "period": str(year),
             "months_binding": len(a["months"]), "rent_musd": "", "max_month_cost_musd": "",
+            **{f"rent_{s}_musd": "" for s in SEASONS},
             "rent_basis": "", "flags": "",
         }
         d = money["per"].get(cid)
@@ -425,6 +431,8 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             months = d["months"]
             row["rent_musd"] = f"{math.fsum(months.values()) / 1e6:.6f}"
             row["max_month_cost_musd"] = f"{max(months.values()) / 1e6:.6f}"
+            for s, ms in SEASONS.items():  # 0 = no positive $ in that season (observed)
+                row[f"rent_{s}_musd"] = f"{math.fsum(months.get(m, 0.0) for m in ms) / 1e6:.6f}"
             row["rent_basis"] = "spp_congestion_by_constraint"
             joined += 1
             joined_abs += sp_sum
@@ -484,7 +492,8 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
         coverage="partial" if unjoined else "observed",
         contributors=[money["cbc_stamp"], money["tcr_stamp"]],
         column_sources={"rent_musd": money["cbc_stamp"],
-                        "max_month_cost_musd": money["cbc_stamp"]},
+                        "max_month_cost_musd": money["cbc_stamp"],
+                        **{f"rent_{s}_musd": money["cbc_stamp"] for s in SEASONS}},
         note=(
             f"SPP Day-Ahead market only (no real-time), {year}, one row per constraints "
             "row. hours_binding = distinct UTC hours (GMTIntervalEnd) the flowgate was "
@@ -498,7 +507,10 @@ def _constraints_and_congestion(snapshot_dir: Path) -> dict:
             "rent_musd = SPP's congestion by constraint (sum over intervals of flow x "
             "shadow price; posted as a negative Sum), summed over the months it is "
             "positive; months where SPP shows negative rent are counted in flags, never "
-            f"netted. Joined on Constraint Name|Contingency Name: {joined} of "
+            "netted. rent_djf/mam/jja/son_musd split those $ by meteorological season "
+            f"(Dec, Jan, Feb of {year}; Mar-May; Jun-Aug; Sep-Nov); 0 = no positive $ in "
+            "that season; blank where rent_musd is blank. "
+            f"Joined on Constraint Name|Contingency Name: {joined} of "
             f"{len(congestion)} flowgates ({joined_abs / kept_abs if kept_abs else 0:.3%} "
             f"of kept |shadow price|); {mismatched} not joined because the monitored "
             f"element differs (recycled ids); {flagged} flagged with negative-rent months; "

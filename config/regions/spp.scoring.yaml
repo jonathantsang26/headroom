@@ -36,9 +36,9 @@ references:
 reference_rule:
   rule: "p99 (numpy linear) of each raw signal's expected value over scored flowgates where the signal is observed (unobserved excluded, observed zeros included), 4 significant figures; cost_of_inaction per `definitions`"
   quantile: 0.99
-  derived_from_snapshot: "2026-10-13.r2"   # the same congestion bytes as 2026-10-13
-  snapshot_manifest_sha256: "398fdf2da90d47505d7134338484874c6cb423641e1add2b51c5919de4486da7"
-  congestion_sha256: "065c7b603982f5f9e04a581bf6521df91d531ce932087bda0f12d02866a119ad"
+  derived_from_snapshot: "2026-10-13.r3"   # r2's rent, hours and months columns plus congestion $ by season
+  snapshot_manifest_sha256: "e0cac9b38d5d99fcc228f6428825a250a19dffaf82a9af68c8d509a90f75b273"
+  congestion_sha256: "169575be390c0f5ddcb1e9f1934ca4fa699a575349cdd71bdae8c2e8e4fd6edf"
   coi_definition: recurring_rent
   n_rent: 2054
   n_hours: 2072
