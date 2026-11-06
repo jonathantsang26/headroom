@@ -56,7 +56,7 @@ forward_rent:
   ratio_quantiles: {"0": 0.0, "0.05": 0.0, "0.1": 0.000124, "0.25": 0.235, "0.5": 0.758, "0.75": 1.47, "0.9": 2.71, "0.95": 3.7, "0.99": 8.4, "1": 8.4}
   ratio_mean: 1.22
   rule: "within-year splits (H1->H2, H2->H1, odd->even, even->odd); predictor with the highest mean held-out capture at top 5%; eps = p0..p99 of the leaders' system-normalized realized/predicted ratios, 3 significant figures, p1 = p99"
-  derived_from_snapshot: "2026-10-13.r2"
+  derived_from_snapshot: "2026-10-13.r2"   # 2026-10-13.r3 reuses the same raw CBC files
   cbc_raw_sha256: "83d4dd3dda66f7ee8850c6e44c4e1aa2fbefa97c740149c1f531b30ad077d139"
   n_flowgates_with_rent: 2072
   script: scripts/backtest_forward_rent.py
