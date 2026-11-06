@@ -1,12 +1,13 @@
 # GET expected-value priors for SPP flowgates
 
-Companion to `config/get_priors.yaml` (version `spp-get-priors-2026-10-13.2`; research revision 2 after an audit, plus the interface change below). The file passes `headroom.model.ev.load_priors`.
+Companion to `config/get_priors.yaml` (version `spp-get-priors-2026-10-13.3`; research revision 2 after an audit, plus the interface change and the revision .3 DLR season factor below). The file passes `headroom.model.ev.load_priors`.
 
 **Since this research.** Two changes to the EV layer postdate it:
 
 - EV now uses forward rent, R_f × months_binding/12 × a backtest ratio draw, not the observed 2025 rent (docs/FORWARD_RENT.md).
 - EV values the decision a planner can make: learn which GETs apply, then deploy the applicable GET with the highest expected net value E[u]E[h]E[R] − E[C], or nothing. It no longer floors each draw at zero, which assumed the realized relief, haircut, cost and next year's rent were known in advance. `recommended_get` is the GET contributing most to that value (the fragility noted in section 10, item 2 is gone).
 - Interfaces: the relief-size proxy that section 4.4 and 6.3 folded into applicability is now a separate `relief_scale` (DLR 0.35, TO 0.5), and applicability for interfaces is the probability alone (DLR 0.30, was 0.10; TO 0.30, was 0.15). Folding a relief discount into the probability charged the cost only where the GET was drawn applicable, so it undercharged cost.
+- Revision .3 (2026-11-06) adds one slot, DLR's `season_factor` (section 4.2). DLR's relief share is now multiplied, per flowgate, by a factor set by the season its 2025 congestion dollars fell in: 0.5 / 0.7 / 0.9 for June-August, 1.0 / 1.3 / 1.5 for December-February, 1 for spring and fall. No other value changed. Why only this signal: [FLOWGATE_EVIDENCE.md](FLOWGATE_EVIDENCE.md).
 - C_TO's lo and hi pair the extremes of system cost and the number of flowgates N (lo: low cost over high N; hi: high cost over low N). That is a joint-extreme envelope, which section 2 avoids for DLR and APFC; its ends are wider than comparable quantiles.
 
 The sensitivity table in section 9 was computed on point 2025 rent with a scratch re-implementation. The real run's sensitivity is in README Status.
@@ -139,6 +140,16 @@ This fixes revision 1's inconsistency. The YAML and this report now use the same
 - The value 0.15 also keeps u.hi x h.hi <= 0.08 (section 3). Windy, winter-binding lines could exceed it; a sensitivity at hi = 0.20 is in section 9.
 
 **lo = 0.02 (judgement).** This covers sheltered lines, or lines binding in hot, calm hours, where DLR adds little over AAR. Like-for-like, DLR was below AAR in 22% of summer hours and 27% of winter hours (aar-2, Table 5 p.8). For NREL's median line, DLR was at least 7% below ILR in about 20% of hours (aar-18, slide 26). DLR was below undefined "traditional" ratings 20-40% of the time (aar-37, p.4). The lo also covers the risk that a DLR below AAR lowers the limit, since in SPP's precedence ICCP/DLR ranks above AAR (aar-32).
+
+**Season factor (revision .3): JJA 0.5 / 0.7 / 0.9, DJF 1.0 / 1.3 / 1.5, MAM and SON 1.** The mode above takes the coincidence of wind and binding hours to net to about 1 over SPP's binding mix. That is a population statement. One flowgate's binding hours are not the population's: a line that binds in hot, calm summer peaks gets less from DLR than one that binds in windy winter hours (dlr-21, syntheses-20). The season factor carries that per flowgate, using the one place the public data shows when a flowgate's value accrues: SPP's congestion-by-constraint dollars by month.
+
+- **How it enters.** ev.py multiplies u_DLR by 1 + Σ_s share_s × (k_s − 1), where share_s is the flowgate's share of its 2025 congestion dollars in season s and k_s is drawn once per draw from the triangle above, shared by all flowgates and independent of u. The expected net value uses E[u] × (1 + Σ share × (E[k] − 1)). Combination inherits it through u_DLR.
+- **Why these values.** Over AAR, the terminal ceiling leaves about 9-16% in summer and 22-30% in winter (aar-2 via dlr-10, the same arithmetic as hi above), a winter/summer ratio of about 2.1. AAR itself takes +15.1% over static in summer and +2.7% in winter (aar-2), so less is left for DLR in summer. Like-for-like, DLR fell below AAR in slightly more winter hours (27%) than summer hours (22%) (aar-2 Table 5), so the modes are shaded to 1.3 / 0.7 = 1.86. The summer hi stays below 1, because AAR's summer gain over static is the largest of the year. The winter hi of 1.5 is the unshaded ratio times the summer mode. The summer lo of 0.5 puts a summer-only line's mode u at 0.04, toward the lo above, which describes hot, calm binding.
+- **Spring and fall stay at 1.** No source here separates them. Plains surface winds peak in spring, so a spring factor above 1 is plausible, but it has no number behind it.
+- **The SPP-wide level is kept.** In snapshot 2026-10-13.r3, 2025 congestion dollars fell 30.0% in DJF, 28.3% in MAM, 19.3% in JJA and 22.5% in SON. The rent-weighted mean factor is 1.02 at the triangle means, so the change mostly redistributes DLR's value between flowgates.
+- **The to-35 cap.** 1.5 × u.hi 0.15 = 0.225, so u × h can exceed 0.08 for a winter-only line in a high draw. The cap is a system total (section 3). Per-flowgate breaches in winter draws are offset by summer flowgates, and the rent-weighted factor mean stays about 1, so the aggregate check is unchanged in kind. The share of draws above 0.08 is reported with the run in FLOWGATE_EVIDENCE.md.
+- **Unobserved stays 1.** A snapshot without dollars by season (before 2026-10-13.r3, or the fixtures), or a flowgate with no positive dollars, keeps factor 1 and says so in its EV basis. It is never 0.
+- **Not used: hour of day.** The direction is not signed. Afternoons are hotter and fully sunlit, but surface winds mix down in the afternoon. Nights have no sun, which AAR's day and night ratings already credit, and calmer surface winds. The coincidence of wind and binding differs between wind-export and summer-peak constraints (section 10, item 6).
 
 ### 4.3 Cost C_DLR: 0.034 / 0.10 / 0.26 $M/yr
 
@@ -432,7 +443,7 @@ How to read the re-run:
    - All the TO evidence runs through one vendor.
    - The to-29 product is used twice (section 3).
 5. **APFC cost is bimodal and its u and C are coupled.** Planning estimates run $1-7M; as-built and utility figures run $34-44M per flowgate. APFC rarely wins below about $31M of rent.
-6. **DLR's gain over AAR in SPP binding hours** has no SPP measurement: there was no SPP DLR deployment in 2019-2026 (negatives). The sign of the wind correlation differs between wind-export and summer-peak constraints.
+6. **DLR's gain over AAR in SPP binding hours** has no SPP measurement: there was no SPP DLR deployment in 2019-2026 (negatives). The sign of the wind correlation differs between wind-export and summer-peak constraints. Revision .3 lets it differ by the season of each flowgate's congestion (section 4.2); the season factors are judgement on aar-2's summer/winter ratio, not an SPP measurement.
 7. **AAR timing and the post-2027 shrink in R_f** are not in the model (section 4.1). The model uses 2025 pre-AAR rent.
 8. **Structural limits:**
    - One shared h, drawn independently of u. This forces the TO workaround and the cap enforced through h.hi, and it leaves Combination above the cap in 8.4% of draws.
@@ -482,6 +493,7 @@ How to read the re-run:
 | s.6.2 to-69 called SPP's | Reworded as ERCOT's setup cost, probably not incurred by SPP. |
 | s.6.1 0.006 | Recomputed (0.007 / 0.025 / 0.037 at the mode u). |
 | C lo/hi joint extremes | All C now built at mid-life; joint-extreme and 10-year variants given in section 9. |
+| Revision .3: u_DLR shared by every flowgate, though the coincidence of wind and binding differs by flowgate (s.10 item 6) | Added DLR `season_factor` (JJA 0.5 / 0.7 / 0.9, DJF 1.0 / 1.3 / 1.5), weighted by each flowgate's observed congestion dollars by season (section 4.2). The rent-weighted mean factor is 1.02. |
 
 ## 12. Citation table (per number)
 

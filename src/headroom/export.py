@@ -69,6 +69,7 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
     """One flat row per flowgate, ranked, with signal expecteds + provenance."""
     rows = []
     meta = {c.constraint_id: c for c in result.bucket_b.constraints}
+    season = result.model.extras.get("season_factor", {})
     for rank, s in enumerate(result.model.scores, start=1):
         row = {
             "rank": rank,
@@ -114,6 +115,10 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
                 meta[s.constraint_id].monitored_facility) else ""),
             "get_evidence": s.get_evidence,
             "get_candidates": ";".join(s.get_candidates),
+            # observed shares of the flowgate's congestion $ in winter and summer, and
+            # the season factor they give DLR's relief (null: unobserved, factor 1, or
+            # DLR cannot apply to the class)
+            **_season_columns(co, season.get(s.constraint_id, {})),
         })
         for option in _GET_OPTIONS:
             p = s.get_probabilities.get(option)
@@ -124,6 +129,15 @@ def build_score_rows(result: PipelineResult) -> list[dict]:
 
 _GET_OPTIONS = ("No cost-effective GET", "Dynamic Line Rating", "Advanced Power Flow Control",
                 "Topology Optimization", "Combination")
+
+
+def _season_columns(co, factors: dict) -> dict:
+    by = co.season_rent_musd if co is not None else None
+    total = sum(by.values()) if by else 0.0
+    share = lambda k: round(by[k] / total, 4) if total > 0 else None
+    dlr = factors.get("Dynamic Line Rating")
+    return {"rent_share_djf": share("djf"), "rent_share_jja": share("jja"),
+            "dlr_season_factor": round(dlr.expected, 4) if dlr is not None else None}
 
 
 def _slug(name: str) -> str:

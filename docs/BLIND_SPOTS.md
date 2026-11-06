@@ -53,9 +53,9 @@ and a widened band — flagged, never dropped.
   `config/get_priors.yaml`. These are cited judgement, not observations, and the order
   of the shortlist depends on them. Their content and sha256 are recorded in every run
   manifest. The value of relief is first order (u × rent): it ignores the network
-  response beyond the haircut and assumes one deployment relieves one flowgate. Only 53
-  flowgates have a GET worth deploying under these priors. That count ranges from 16 to
-  114 across the priors' ranges (`scripts/ev_sensitivity.py`), though the leaders
+  response beyond the haircut and assumes one deployment relieves one flowgate. Only 55
+  flowgates have a GET worth deploying under these priors. That count ranges from 14 to
+  116 across the priors' ranges (`scripts/ev_sensitivity.py`), though the leaders
   hardly move.
 - **One year of congestion is a weak forecast.** Within 2025, only about 30% of one
   half-year's top 5% recur in the other half. The EV layer therefore uses forward rent,
@@ -66,7 +66,10 @@ and a widened band — flagged, never dropped.
   GET applicability draws.
 - **GET applicability without topology.** Element locations are CEII, so the GET rule
   and the EV applicability classes see only element type, contingency and binding
-  pattern. They do not see parallel paths, terminal limits or line length.
+  pattern. They do not see parallel paths, terminal limits or line length. So within
+  a class, flowgates share applicability and most share a probability split. The one
+  flowgate-level signal the EV layer adds, the season of the congestion dollars,
+  scales DLR's relief, not applicability (docs/FLOWGATE_EVIDENCE.md).
 - `cost_of_inaction` on the fixtures is rent × hours, which counts binding hours a
   second time. The SPP region uses recurring rent instead: annual dollars minus the
   largest month (`definitions` in `config/regions/spp.scoring.yaml`). It is still

@@ -101,6 +101,10 @@ class CongestionObs(BaseModel):
     months_binding: int | None = None
     shadow_price_sum: float | None = None  # sum |SP| ($/MW-yr): value of 1 MW of relief
     fact_ids: list[str] = Field(default_factory=list)  # the row's observed Facts
+    # observed congestion $ by meteorological season ($M: djf, mam, jja, son); None =
+    # not recorded (older snapshots, fixtures, or no observed $)
+    season_rent_musd: dict[str, float] | None = None
+    season_fact_ids: list[str] = Field(default_factory=list)
 
 
 class PlanningItem(BaseModel):

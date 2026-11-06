@@ -53,11 +53,11 @@ allocation: published ISO-wide congestion totals ($600M for SPP) are spread over
 by voltage × miles. Nothing observed about any individual line goes into it. 8 corridors
 are SPP (7 OG&E, 1 SPS). All 8 rows are present in the pinned 2023 data.
 
-Headroom's SPP shortlist (run on snapshot `2026-10-13.r2`) ranks the 2,072
+Headroom's SPP shortlist (run on snapshot `2026-10-13.r3`; the `2026-10-13.r2` run had the same 103 members) ranks the 2,072
 flowgates that bound in SPP's 2025 day-ahead market: 1,682 lines, 379 transformers and
 11 interfaces. They roll up to 892 corridors. The order is by the expected net value
 of a GET decision, which combines SPP's posted congestion dollars, forward-rent
-persistence and cited GET priors. 53 flowgates have a GET worth deploying. SPP names these elements by
+persistence and cited GET priors. 55 flowgates have a GET worth deploying. SPP names these elements by
 market-model bus names, and their locations are CEII, so no public join exists between
 the two lists. A name search of all 892 corridor keys found:
 

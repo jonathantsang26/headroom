@@ -74,7 +74,10 @@ URLs name their release. One exception: the HIFLD query envelope in
 files without the features outside the old envelope. Use it when an adapter fix changes what a snapshot's tables or notes should
 say. `2026-10-13.r2` was built this way: its nine tables are byte-identical to
 `2026-10-13`. Only the congestion table's coverage (now `partial`, because 18
-flowgates have no posted dollars) and its note changed.
+flowgates have no posted dollars) and its note changed. `2026-10-13.r3` was built the
+same way from r2. Its congestion table adds the congestion dollars by season
+(`rent_djf_musd` and so on); every other table, and every existing congestion column,
+is byte-identical to r2.
 
 ## Build and activate
 
