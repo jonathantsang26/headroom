@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 
-def _legend_html(gets) -> str:  # pragma: no cover - presentation helper
-    from headroom.app.map_data import get_color
-
+def _legend_html(entries) -> str:  # pragma: no cover - presentation helper
+    """entries: (label, rgb) pairs, one per recommendation shown on the map."""
     chips = []
-    for g in gets:
-        r, gg, b = get_color(g)[:3]
+    for g, color in entries:
+        r, gg, b = color[:3]
         chips.append(
             f'<span style="display:inline-block;width:12px;height:12px;'
             f'background:rgb({r},{gg},{b});margin-right:6px;border-radius:2px;"></span>'
@@ -46,17 +45,22 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
     segs = corridor_segments(result)
     seg_df = pd.DataFrame(segs)
 
-    all_gets = sorted(seg_df["recommended_get"].unique())
+    # the recommendation shown is the evidence's set where it leaves several GETs
+    # open; recommended_get is then only the rule's tie-break
+    all_gets = sorted(seg_df["get_shown"].unique())
     gets = st.sidebar.multiselect("Recommended GET", all_gets, default=all_gets)
     min_p = st.sidebar.slider("Min rank stability (p_top_k)", 0.0, 1.0, 0.0, 0.05)
-    view = seg_df[(seg_df["recommended_get"].isin(gets)) & (seg_df["p_top_k"] >= min_p)]
+    view = seg_df[(seg_df["get_shown"].isin(gets)) & (seg_df["p_top_k"] >= min_p)]
 
     # ---- map: corridor geometry colored by GET, width by rank stability ----
     st.subheader("Corridors")
-    st.markdown(_legend_html(all_gets), unsafe_allow_html=True)
+    legend = seg_df.drop_duplicates("get_shown").sort_values("get_shown")
+    st.markdown(_legend_html(zip(legend["get_shown"], legend["color"])),
+                unsafe_allow_html=True)
     st.caption(
-        "Line color = recommended GET · line width = rank stability (p_top_k). "
-        "Grey nodes are buses; corridors without resolvable geometry are in the table only."
+        "Line color = recommended GET (purple: the evidence leaves several GETs open) · "
+        "line width = rank stability (p_top_k). Grey nodes are buses; corridors without "
+        "resolvable geometry are in the table only."
     )
 
     geo = view[view["has_geometry"]]
@@ -82,7 +86,7 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
         ),
     ]
     tooltip = {
-        "text": "{physical_corridor}\n{recommended_get}\n"
+        "text": "{physical_corridor}\n{get_shown}\n"
                 "p_top_k={p_top_k}  band=[{composite_lo}, {composite_hi}]"
     }
     st.pydeck_chart(
@@ -97,9 +101,12 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
     # ---- ranked corridor shortlist (the presented unit) ----
     st.subheader("Ranked corridors (footprint-deduped)")
     show_cols = [
-        "physical_corridor", "recommended_get", "p_top_k", "n_flowgates",
+        "physical_corridor", "get_shown", "p_top_k", "n_flowgates",
         "composite_lo", "composite_expected", "composite_hi", "has_geometry",
     ]
+    # the EV layer's economics, when it ran: what pays, beside what physically fits
+    if view["ev_get"].notna().any():
+        show_cols[2:2] = ["ev_get", "ev_mean"]
     st.dataframe(view[show_cols], use_container_width=True)
 
     # ---- detail panel: uncertainty made legible ----
@@ -110,7 +117,12 @@ def main() -> None:  # pragma: no cover - requires a browser/streamlit runtime
         if d is not None:
             lo, exp, hi = d["composite"]
             c1, c2, c3 = st.columns(3)
-            c1.metric("Recommended GET", d["recommended_get"])
+            c1.metric("Recommended GET", d["get_shown"])
+            if d["get_resolved"] is False:
+                c1.caption("The evidence does not separate these GETs; the rule's "
+                           f"tie-break is {d['recommended_get']}.")
+            if d.get("ev_get"):
+                c1.caption(f"EV best bet: {d['ev_get']} ({d['ev_mean']:.2f} $M/yr)")
             c2.metric("Rank stability (p_top_k)", f"{d['p_top_k']:.3f}")
             c3.metric("Composite (p50)", f"{exp:.3f}", f"[{lo:.3f} .. {hi:.3f}]")
             st.caption(f"{d['n_flowgates']} flowgate(s): {', '.join(d['flowgates'])}")

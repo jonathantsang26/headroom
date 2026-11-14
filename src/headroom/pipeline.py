@@ -10,6 +10,7 @@ from pathlib import Path
 from headroom.ingest import ingest_region
 from headroom.ingest.region import RegionConfig
 from headroom.model import ModelResult, ScoringConfig, run_model
+from headroom.model.forward import check_forward_rent_rule
 from headroom.model.references import check_reference_rule
 from headroom.provenance.lineage import LineageStore
 from headroom.provenance.runtime import runtime_identity
@@ -76,6 +77,7 @@ def run_pipeline(
     if not bundle.region.synthetic:
         check_stamp_pins(bundle, registry)
     check_reference_rule(scoring, bundle.input_identity)
+    check_forward_rent_rule(scoring.forward_rent, bundle.raw_inputs)
     bucket_a = run_bucket_a(bundle, store)
     bucket_b = run_bucket_b(bundle, bucket_a, store)
     model = run_model(bucket_a, bucket_b, store, scoring)

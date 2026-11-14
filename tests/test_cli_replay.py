@@ -57,14 +57,15 @@ def test_replay_command_rejects_legacy_manifest_without_writing(tmp_path, capsys
     assert not out.exists()
 
 
-def test_replay_command_passes_relocated_input_override(tmp_path, monkeypatch):
+def test_replay_command_passes_relocated_input_override(tmp_path, monkeypatch, capsys):
     manifest = tmp_path / "run.json"
+    manifest.write_text(json.dumps({"region": "spp-synth", "scoring": {"seed": 1}}))
     archive = tmp_path / "archive"
     out = tmp_path / "replay"
+    calls = []
 
-    def reject(path, *, data_dir):
-        assert path == str(manifest)
-        assert data_dir == str(archive)
+    def reject(recorded, *, data_dir):
+        calls.append((recorded, data_dir))
         raise ValueError("changed input archive")
 
     monkeypatch.setattr("headroom.cli.reproduce_from_manifest", reject)
@@ -73,7 +74,8 @@ def test_replay_command_passes_relocated_input_override(tmp_path, monkeypatch):
             "reproduce", "--manifest", str(manifest), "--out", str(out),
             "--data-dir", str(archive),
         ])
-    assert exc.value.code == 1
+    assert calls == [(json.loads(manifest.read_text()), str(archive))]
+    assert exc.value.code == 1 and "changed input archive" in capsys.readouterr().err
     assert not out.exists()
 
 

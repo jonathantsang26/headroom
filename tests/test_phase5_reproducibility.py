@@ -45,7 +45,9 @@ def test_changing_seed_changes_the_stability_but_not_catastrophically():
         top_fraction=cfg.top_fraction, seed=cfg.seed + 1,
     )
     alt = run_pipeline("spp-synth", scoring=other)
-    # the rock-stable leader stays; only the boundary p_top_k jiggles
+    # the seed reaches the draws: some boundary p_top_k moves...
+    assert [s.p_top_k for s in base.model.scores] != [s.p_top_k for s in alt.model.scores]
+    # ...but the rock-stable leader stays
     assert base.model.scores[0].constraint_id == alt.model.scores[0].constraint_id
 
 
