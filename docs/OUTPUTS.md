@@ -106,6 +106,14 @@ depends on the producer:
   - `rent_musd`: SPP's posted day-ahead congestion dollars, $M/yr.
   - `value_of_1mw_relief_usd`: Σ|shadow price|, $/MW-yr.
   - `hours_binding`, `breached_hours`, `months_binding`.
+  - `rent_share_djf`, `rent_share_jja`: the shares of the flowgate's congestion
+    dollars that fell in December-February and June-August. Blank when the snapshot
+    does not record dollars by season or the flowgate has none.
+- `dlr_season_factor`: what DLR's relief share is multiplied by for this flowgate,
+  from the season of its congestion dollars (the mean factor; see
+  [FLOWGATE_EVIDENCE.md](FLOWGATE_EVIDENCE.md)). Below 1 for summer-heavy congestion,
+  above 1 for winter-heavy. Blank where DLR cannot apply (transformers), or where the
+  season is unobserved: the model then uses 1, never 0.
 - `sig_<signal>`: the expected value of each signal in its own units. `cov_<signal>`
   is `observed` or `unobserved`. An unobserved signal adds 0 to the composite; it is
   not evidence of 0.

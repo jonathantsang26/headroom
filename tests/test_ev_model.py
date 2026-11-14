@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import csv
 import json
+import shutil
 from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
@@ -363,3 +365,175 @@ def test_relief_scale_shrinks_relief_for_its_class_only(region):
     bad["gets"]["Dynamic Line Rating"]["relief_scale"] = {"nonsense": 0.5}
     with pytest.raises(ValueError, match="relief_scale"):
         validate_priors(bad)
+
+
+SEASON_COLUMNS = ("rent_djf_musd", "rent_mam_musd", "rent_jja_musd", "rent_son_musd")
+
+
+@pytest.fixture
+def season_region(monkeypatch, tmp_path):
+    """The real subset with congestion $ by season added, stamped like rent_musd:
+    alternate rows put all of their $ in summer (JJA) or in winter (DJF)."""
+    from headroom.ingest.snapshot import MANIFEST_NAME, sha256_of
+
+    snap = tmp_path / SUBSET.name
+    shutil.copytree(SUBSET, snap)
+    path = snap / "normalized" / "congestion.csv"
+    with path.open(newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    fields = list(rows[0])
+    at = fields.index("rent_basis")
+    fields[at:at] = SEASON_COLUMNS
+    season = {}
+    for i, r in enumerate(rows):
+        season[r["constraint_id"]] = "jja" if i % 2 else "djf"
+        for col in SEASON_COLUMNS:
+            r[col] = ("" if not r["rent_musd"] else
+                      r["rent_musd"] if col == f"rent_{season[r['constraint_id']]}_musd" else "0.000000")
+    with path.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields, lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    manifest = json.loads((snap / MANIFEST_NAME).read_text())
+    entry = manifest["tables"]["congestion"]
+    entry["sha256"] = sha256_of(path)
+    entry["column_sources"].update({c: entry["column_sources"]["rent_musd"] for c in SEASON_COLUMNS})
+    (snap / MANIFEST_NAME).write_text(json.dumps(manifest, indent=1, sort_keys=True))
+    r = RegionConfig("spp-ev-season", "SPP", snap, synthetic=False)
+    monkeypatch.setitem(REGIONS, r.name, r)
+    return r.name, season
+
+
+def _with_season(p, jja, djf):
+    p = deepcopy(p)
+    p["gets"]["Dynamic Line Rating"]["season_factor"] = {"jja": jja, "djf": djf}
+    return p
+
+
+def test_season_factor_scales_dlr_relief_by_the_season_of_the_congestion(season_region):
+    """DLR always applicable, relief 0.1, no haircut or cost, point rents: a flowgate
+    whose $ all fell in summer is worth 0.1 x 0.5 x rent, one whose $ fell in winter
+    0.1 x 1.5 x rent. The factor is a Range whose lineage reaches the season $ only."""
+    name, season = season_region
+    result = run_pipeline(name, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 1.0)
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = _fixed(0.1)
+    res = _ev_direct(result, _with_season(p, _fixed(0.5), _fixed(1.5)), point_rent=True, draws=50)
+    co = result.bucket_b.congestion
+    assert res.ev_mean
+    for cid, mean in res.ev_mean.items():
+        if co[cid].rent_musd.expected == 0:  # no $ to split: unobserved, factor 1
+            assert cid not in res.season_factor and "season factor unobserved" in res.ev[cid].basis
+            continue
+        factor = 0.5 if season[cid] == "jja" else 1.5
+        assert mean == pytest.approx(0.1 * factor * co[cid].rent_musd.expected)
+        rng = res.season_factor[cid]["Dynamic Line Rating"]
+        assert rng.lo == rng.expected == rng.hi == pytest.approx(factor)
+        assert result.store.source_closure(rng.lineage_id) == {"spp_congestion_by_constraint"}
+        assert rng.lineage_id in result.store.get(res.ev[cid].lineage_id).inputs
+        assert f"season factor {factor:.3g}" in res.ev[cid].basis
+    # a triangle: the Range is the mix of lo / mean / hi; the mean enters the value
+    tri = _with_season(p, {"lo": 0.5, "mode": 0.7, "hi": 0.9}, {"lo": 1.0, "mode": 1.3, "hi": 1.5})
+    res = _ev_direct(result, tri, point_rent=True, draws=50)
+    for cid in res.season_factor:
+        rng = res.season_factor[cid]["Dynamic Line Rating"]
+        want = (0.5, 0.7, 0.9) if season[cid] == "jja" else (1.0, 3.8 / 3, 1.5)
+        assert (rng.lo, rng.expected, rng.hi) == pytest.approx(want)
+        assert res.expected_if_applies[cid]["Dynamic Line Rating"] == pytest.approx(
+            0.1 * rng.expected * co[cid].rent_musd.expected)
+
+
+def test_season_factor_moves_the_pick_where_dlr_and_to_are_close(season_region):
+    """DLR (relief 0.1) and TO (relief 0.08) always applicable, no cost: a winter-binding
+    flowgate keeps DLR, a summer-binding one (DLR relief 0.1 x 0.5) goes to TO."""
+    name, season = season_region
+    result = run_pipeline(name, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 1.0)
+    p["gets"]["Topology Optimization"]["applicability"] = dict(
+        p["gets"]["Dynamic Line Rating"]["applicability"])
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = _fixed(0.1)
+    p["gets"]["Topology Optimization"]["relief_share"] = _fixed(0.08)
+    res = _ev_direct(result, _with_season(p, _fixed(0.5), _fixed(1.2)), point_rent=True, draws=50)
+    picks = {season[cid]: set() for cid in res.recommended}
+    for cid, get in res.recommended.items():
+        if result.bucket_b.congestion[cid].rent_musd.expected > 0:
+            picks[season[cid]].add(get)
+    assert picks == {"djf": {"Dynamic Line Rating"}, "jja": {"Topology Optimization"}}
+
+
+def test_season_factor_is_unobserved_not_zero_without_season_dollars(region):
+    """The committed subset predates the season columns: every flowgate keeps factor 1,
+    exactly the value without a season prior, and its basis says unobserved."""
+    result = run_pipeline(region, scoring=_scoring())
+    p = _only("Dynamic Line Rating", 1.0)
+    p["gets"]["Dynamic Line Rating"]["relief_share"] = _fixed(0.1)
+    plain = _ev_direct(result, p, point_rent=True, draws=50)
+    res = _ev_direct(result, _with_season(p, _fixed(0.5), _fixed(1.5)), point_rent=True, draws=50)
+    assert res.season_factor == {}
+    assert res.ev_mean == plain.ev_mean and res.ev_mean
+    assert all("season factor unobserved" in ev.basis for ev in res.ev.values())
+    assert all(co.season_rent_musd is None for co in result.bucket_b.congestion.values())
+
+
+def test_a_season_factor_of_one_changes_nothing(season_region):
+    """Degenerate factors draw no random numbers: every output equals the run without."""
+    name, _ = season_region
+    result = run_pipeline(name, scoring=_scoring())
+    plain = _ev_direct(result, PRIORS)
+    res = _ev_direct(result, _with_season(PRIORS, _fixed(1.0), _fixed(1.0)))
+    assert res.ev_mean == plain.ev_mean and res.p_best == plain.p_best
+    assert res.recommended == plain.recommended and res.p_top_k == plain.p_top_k
+
+
+def test_season_columns_reach_the_export_and_stay_shareable(season_region, tmp_path):
+    name, season = season_region
+    scoring = _scoring(_with_season(PRIORS, {"lo": 0.5, "mode": 0.7, "hi": 0.9},
+                                    {"lo": 1.0, "mode": 1.3, "hi": 1.5}))
+    result = run_pipeline(name, scoring=scoring)
+    d = deliver(result, tmp_path / "out")
+    assert d.mode == "shareable"
+    rows = json.loads(Path(d.paths["scores_json"]).read_text())
+    dlr_app = PRIORS["gets"]["Dynamic Line Rating"]["applicability"]
+    assert any(dlr_app[r["get_evidence"]] == 0 for r in rows if r["rent_musd"])
+    for r in rows:
+        if not r["rent_musd"]:  # no observed $ to split: unobserved, never 0
+            assert r["dlr_season_factor"] is None and r["rent_share_djf"] is None
+            continue
+        summer = season[r["constraint_id"]] == "jja"
+        assert (r["rent_share_jja"], r["rent_share_djf"]) == ((1.0, 0.0) if summer else (0.0, 1.0))
+        if dlr_app[r["get_evidence"]] == 0:  # DLR cannot apply (transformers): no factor
+            assert r["dlr_season_factor"] is None
+            assert "season factor" not in result.model.scores[r["rank"] - 1].ev.basis
+        else:
+            assert r["dlr_season_factor"] == pytest.approx(0.7 if summer else 3.8 / 3, abs=1e-4)
+    with Path(d.paths["csv"]).open(newline="") as fh:
+        assert {"rent_share_djf", "rent_share_jja", "dlr_season_factor"} <= set(next(csv.reader(fh)))
+
+
+def test_season_priors_are_validated():
+    bad = _with_season(PRIORS, _fixed(0.5), _fixed(1.5))
+    bad["gets"]["Dynamic Line Rating"]["season_factor"]["summer"] = _fixed(0.5)
+    with pytest.raises(ValueError, match="season_factor"):
+        validate_priors(bad)
+    with pytest.raises(ValueError, match="season_factor.jja must be >= 0"):
+        validate_priors(_with_season(PRIORS, {"lo": -0.1, "mode": 0.5, "hi": 0.9}, _fixed(1.0)))
+    validate_priors(_with_season(PRIORS, _fixed(0.5), _fixed(1.5)))
+
+
+def test_season_dollars_must_sum_to_the_rent():
+    from headroom.provenance.lineage import LineageStore
+    from headroom.provenance.synthetic import synthetic_fact
+    from headroom.reconstruct.congestion_rent import congestion_observations
+
+    store = LineageStore()
+    fact = store.add(synthetic_fact(value=1.0, provider="spp_congestion_by_constraint",
+                                    lineage_id="obs:congestion:a|b:rent_musd"))
+    row = {"constraint_id": "a|b", "hours_binding": "10", "rent_musd": "1.000000",
+           "rent_djf_musd": "0.500000", "rent_mam_musd": "0.000000",
+           "rent_jja_musd": "0.400000", "rent_son_musd": "0.000000",
+           "_lineage": [fact.lineage_id]}
+    with pytest.raises(ValueError, match="do not sum to rent_musd"):
+        congestion_observations([row], store)
+    row["rent_son_musd"] = "0.100000"
+    co = congestion_observations([row], store)["a|b"]
+    assert co.season_rent_musd == {"djf": 0.5, "mam": 0.0, "jja": 0.4, "son": 0.1}

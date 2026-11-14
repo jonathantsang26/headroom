@@ -188,8 +188,10 @@ def _load_live(
 # Columns whose row Facts take their own source from `column_sources`.
 PER_COLUMN_STAMPED = {
     "congestion": {"monthly_cost_musd", "hours_binding", "shadow_price_sum_usd_per_mw",
-                   "breached_hours", "months_binding", "rent_musd", "max_month_cost_musd"},
+                   "breached_hours", "months_binding", "rent_musd", "max_month_cost_musd",
+                   "rent_djf_musd", "rent_mam_musd", "rent_jja_musd", "rent_son_musd"},
 }
+SEASON_COLUMNS = ("rent_djf_musd", "rent_mam_musd", "rent_jja_musd", "rent_son_musd")
 
 
 def _leaf(stamp: SourceStamp | None, *, value, provider: str, lineage_id: str,
@@ -359,6 +361,11 @@ def _envelope(
         r["_max_month_lineage"] = _row_facts(
             store, stamps["congestion"], TABLE_PROVIDER["congestion"], r, prefix,
             ("max_month_cost_musd",), column_sources=cols,
+        )
+        # congestion $ by season (absent from older snapshots and the fixtures)
+        r["_season_lineage"] = _row_facts(
+            store, stamps["congestion"], TABLE_PROVIDER["congestion"], r, prefix,
+            SEASON_COLUMNS, column_sources=cols,
         )
         r["_rent_provider"] = (cols["rent_musd"].source if "rent_musd" in cols
                                else TABLE_PROVIDER["congestion"])

@@ -23,6 +23,7 @@ PROVIDER = "spp_binding_constraints"
 # Effective limit of an unplaced monitored element (MW): typical 115-345 kV line
 # ratings, mode at the 138 kV class. An assumption, not an observation.
 RATING_MW_UNOBSERVED = (100.0, 250.0, 1200.0)
+SEASONS = ("djf", "mam", "jja", "son")  # rent_<season>_musd columns, when recorded
 # Forward congestion is genuinely uncertain: next year's rent vs this year's.
 FORWARD_BAND = (0.6, 1.5)
 
@@ -115,6 +116,12 @@ def congestion_observations(
                 inputs=[*(r.get("_rent_lineage") or []), *(r.get("_max_month_lineage") or [])]
                 or lineage,
             ))
+        seasons = {s: num(f"rent_{s}_musd") for s in SEASONS}
+        if observed and None not in seasons.values():
+            if abs(sum(seasons.values()) - float(observed)) > 1e-5:
+                raise ValueError(f"congestion $ by season for {cid} do not sum to rent_musd")
+        else:
+            seasons = None  # all four, alongside observed rent, or not recorded
         out[cid] = CongestionObs(
             constraint_id=cid,
             period=(r.get("period") or "").strip() or period,
@@ -125,5 +132,7 @@ def congestion_observations(
             months_binding=int(months) if months is not None else None,
             shadow_price_sum=num("shadow_price_sum_usd_per_mw"),
             fact_ids=[*lineage, *(r.get("_rent_lineage") or [])],
+            season_rent_musd=seasons,
+            season_fact_ids=list(r.get("_season_lineage") or []) if seasons else [],
         )
     return out

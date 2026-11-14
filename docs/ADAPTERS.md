@@ -37,7 +37,7 @@ sees a different upstream version raises (`common.require_pin`) instead of build
 | `load_930` | `snapshot, ba, load_mw` | `utc_hour, basis, wind_share` | `eia_930` |
 | `ferc1_lines` | `line_id, voltage_kv, conductor, thermal_limit_mw, cost_usd` | `record_id, utility_id_ferc1, utility_name, report_year, start_point, end_point, length_mi, standalone_mi, aggregated_mi, structure, num_circuits, voltage_as_reported, flags, match, match_evidence` | `pudl_ferc_form1` + contributor `hifld_transmission` (the join) |
 | `constraints` | `constraint_id, monitored_line, contingency_line, ctype` | `monitored_facility, monitored_facility_as_reported, contingency_facility, contingency_name, spp_constraint_type, contingency_to, contingency_kv` | `spp_binding_constraints` |
-| `congestion` | `constraint_id, monthly_cost_musd, hours_binding` | `shadow_price_sum_usd_per_mw, max_abs_shadow_price, breached_hours, months_binding, period, rent_musd, max_month_cost_musd, rent_basis, flags` | `spp_binding_constraints`; `rent_musd`/`max_month_cost_musd` stamped `spp_congestion_by_constraint` via `column_sources`; contributors `spp_congestion_by_constraint`, `spp_tcr_funding` |
+| `congestion` | `constraint_id, monthly_cost_musd, hours_binding` | `shadow_price_sum_usd_per_mw, max_abs_shadow_price, breached_hours, months_binding, period, rent_musd, max_month_cost_musd, rent_djf_musd, rent_mam_musd, rent_jja_musd, rent_son_musd, rent_basis, flags` | `spp_binding_constraints`; `rent_musd`, `max_month_cost_musd` and `rent_<season>_musd` stamped `spp_congestion_by_constraint` via `column_sources`; contributors `spp_congestion_by_constraint`, `spp_tcr_funding` |
 | `planning` | `constraint_id, plan, proposed_fix, assigned_cost_musd` | | `spp_itp` |
 | `queue` | `request_id, near_bus, mw, fuel` | `poi, state, to_at_poi, status, match` | `spp_queue` |
 
@@ -84,7 +84,11 @@ Column semantics:
   negative `Sum`), joined on `Constraint Name|Contingency Name` only when the monitored
   element matches (ids are recycled), summed over months with positive rent; months
   with negative rent are counted in `flags`, never netted. No row means unobserved
-  (blank), never zero. SPP's TCR funding by constraint (settled DA Collected) is read
+  (blank), never zero. `rent_djf_musd`, `rent_mam_musd`, `rent_jja_musd` and
+  `rent_son_musd` split those dollars by meteorological season (December of the data
+  year counts in DJF); they sum to `rent_musd`, are 0 for a season with no positive
+  dollars, and are blank where `rent_musd` is blank. Snapshots built before
+  2026-10-13.r3 lack them, and the EV layer then treats the season as unobserved. SPP's TCR funding by constraint (settled DA Collected) is read
   for a calibration total in the note, and as a build tripwire. The build fails when:
   - a month has no dollars in either file;
   - a month's congestion-by-constraint total is outside 0.8–2.0× that month's DA

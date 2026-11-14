@@ -2,8 +2,8 @@
 
 For each perturbation, the EV layer is re-run on the same inputs, seed and draws as the
 region's scoring file. The perturbations:
-- each relief share, annual cost and the haircut set to the low or high end of its
-  triangle;
+- each relief share, annual cost, season factor and the haircut set to the low or high
+  end of its triangle, and each season factor removed;
 - each applicability probability moved by +/-0.25, clipped to [0, 1];
 - forward rent turned off (plain observed rent with its band).
 
@@ -45,6 +45,14 @@ def perturbations(priors: dict):
                 p = copy.deepcopy(priors)
                 p["gets"][g][param] = spec
                 yield f"{g} {param} at {end}", p, True
+        for season, tri in (priors["gets"][g].get("season_factor") or {}).items():
+            for end, spec in _ends(tri).items():
+                p = copy.deepcopy(priors)
+                p["gets"][g]["season_factor"][season] = spec
+                yield f"{g} season_factor[{season}] at {end}", p, True
+        p = copy.deepcopy(priors)
+        if p["gets"][g].pop("season_factor", None):
+            yield f"{g} season_factor off", p, True
         for cls in EVIDENCE_CLASSES:
             for delta in (-0.25, 0.25):
                 v = priors["gets"][g]["applicability"][cls]

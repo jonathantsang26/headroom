@@ -403,6 +403,39 @@ def test_rent_is_spp_congestion_dollars_joined_exactly_with_its_own_stamp(snap):
     Snapshot(snap).require_tables(TABLES)
 
 
+def test_congestion_dollars_by_season_split_the_rent_with_its_stamp(snap):
+    spp.normalize(snap)
+    rows = {r["constraint_id"]: r for r in _table(snap, "congestion")}
+    # expected, computed independently: positive $ by month, deduped as above
+    seen, by_month = set(), {}
+    for r in _sample_cbc():
+        key = (r["Date"], r["Constraint Name"], r["Contingency Name"])
+        usd = -float(r["Sum"])
+        if key in seen or usd < 0:
+            continue
+        seen.add(key)
+        cid = f"{r['Constraint Name']}|{r['Contingency Name']}"
+        month = int(r["Date"][4:])
+        by_month.setdefault(cid, Counter())[month] += usd
+    seasons = {"djf": (12, 1, 2), "mam": (3, 4, 5), "jja": (6, 7, 8), "son": (9, 10, 11)}
+    checked = 0
+    for cid, row in rows.items():
+        cols = [row[f"rent_{s}_musd"] for s in seasons]
+        if not row["rent_musd"]:
+            assert cols == ["", "", "", ""]  # unobserved, never 0
+            continue
+        for s, months in seasons.items():
+            want = math.fsum(by_month[cid][m] for m in months) / 1e6
+            assert float(row[f"rent_{s}_musd"]) == pytest.approx(want, abs=1e-6)
+        assert math.fsum(float(c) for c in cols) == pytest.approx(float(row["rent_musd"]), abs=5e-6)
+        checked += 1
+    assert checked
+    entry = _manifest(snap)["tables"]["congestion"]
+    for s in seasons:
+        assert entry["column_sources"][f"rent_{s}_musd"] == entry["column_sources"]["rent_musd"]
+    assert "by meteorological season" in entry["note"]
+
+
 def test_months_binding_counts_months_with_any_binding_hour(snap):
     spp.normalize(snap)
     rows = {r["constraint_id"]: r for r in _table(snap, "congestion")}

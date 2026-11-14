@@ -245,9 +245,11 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         s.p_top_k = res.p_top_k.get(cid, 0.0)
         if cid in res.recommended:
             where = ", ".join(f"{g} {v:.3g}" for g, v in res.expected_if_applies[cid].items())
+            season = "".join(f"; {g} relief x {r.expected:.3g} for the season of its congestion"
+                             for g, r in res.season_factor.get(cid, {}).items())
             s.get_basis += (f"; EV best bet: {s.ev_get} (largest share of the decision's "
                             f"expected value — economics, not a physical assignment; "
-                            f"recommended_get stays the evidence rule); expected net value "
+                            f"recommended_get stays the evidence rule){season}; expected net value "
                             f"where each applies ($M/yr): {where}; nothing is deployed in "
                             f"{s.get_probabilities.get('No cost-effective GET', 0):.0%} "
                             f"of draws (priors {res.priors_version}, evidence "
@@ -263,6 +265,8 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         # decision split leaves the ranking digest unchanged.
         "option_value": res.option_value,
     }
+    # cid -> {GET: season factor Range} (not on Score: the EV basis and lineage carry it)
+    extras["season_factor"] = res.season_factor
     return res.k if cfg.ranking == "ev" else k
 
 

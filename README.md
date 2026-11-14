@@ -39,12 +39,14 @@ scripts/      reference rule, forward-rent backtest, EV sensitivity, echo-gridlo
 ```
 
 ## Run on public data (SPP)
-Replay the verified run from its archived snapshot (`data/raw/spp/2026-10-13.r2`, kept
-out of git):
+Replay the verified run from its archived snapshot (`data/raw/spp/2026-10-13.r3`, kept
+out of git). r3 is `2026-10-13.r2` renormalized with no network: only the congestion
+table differs, by its congestion dollars by season. Build it from r2 once, then run:
 ```bash
-.venv/bin/python -m headroom.ingest.adapters.build_snapshot --date 2026-10-13 --revision 2 --activate-only
-.venv/bin/headroom run --region spp --out data/processed/spp-2026-10-13
-.venv/bin/headroom reproduce --manifest data/processed/spp-2026-10-13/run_manifest.json --out data/replayed/spp-2026-10-13
+.venv/bin/python -m headroom.ingest.adapters.build_snapshot --renormalize-from 2026-10-13.r2 --revision 3 --no-activate
+.venv/bin/python -m headroom.ingest.adapters.build_snapshot --date 2026-10-13 --revision 3 --activate-only
+.venv/bin/headroom run --region spp --out data/processed/spp-2026-10-13.r3
+.venv/bin/headroom reproduce --manifest data/processed/spp-2026-10-13.r3/run_manifest.json --out data/replayed/spp-2026-10-13.r3
 ```
 Replay passes only at a commit whose pipeline code and source pins match the manifest
 (see [SNAPSHOTS.md](docs/SNAPSHOTS.md)).
@@ -56,8 +58,8 @@ Replay passes only at a commit whose pipeline code and source pins match the man
     re-dates the queue CSV on each refresh, so a new build first needs `spp_queue`
     re-pinned.
   - Re-pinning has a cost. A live run refuses stamps that differ from today's pins, so
-    once `spp_queue` moves on, `2026-10-13.r2` and the committed test subset load only
-    at a commit with their pins. Re-stamp the test subset, or build it again from the
+    once `spp_queue` moves on, `2026-10-13.r2`, `2026-10-13.r3` and the committed test
+    subset load only at a commit with their pins. Re-stamp the test subset, or build it again from the
     new snapshot, in the same commit.
   - It also fails if the congestion dollars trip a data-quality check.
 - **No network.** `--renormalize-from <snapshot> --revision N` re-runs the normalizers
@@ -65,8 +67,8 @@ Replay passes only at a commit whose pipeline code and source pins match the man
 - **Checks of the scoring file.** Its references and forward-rent calibration are
   derived from the snapshot, and both can be re-checked:
   ```bash
-  .venv/bin/python scripts/derive_scoring_refs.py data/raw/spp/2026-10-13.r2 --check config/regions/spp.scoring.yaml
-  .venv/bin/python scripts/backtest_forward_rent.py data/raw/spp/2026-10-13.r2 --check config/regions/spp.scoring.yaml
+  .venv/bin/python scripts/derive_scoring_refs.py data/raw/spp/2026-10-13.r3 --check config/regions/spp.scoring.yaml
+  .venv/bin/python scripts/backtest_forward_rent.py data/raw/spp/2026-10-13.r3 --check config/regions/spp.scoring.yaml
   ```
 
 Sources, pins and the table contract: [ADAPTERS.md](docs/ADAPTERS.md). What each output
@@ -74,16 +76,16 @@ file and column means: [OUTPUTS.md](docs/OUTPUTS.md). The footprint and table co
 of `headroom panel`: [PANEL.md](docs/PANEL.md).
 
 ## Status
-Verified on 2026-10-13. `headroom run --region spp` on snapshot `2026-10-13.r2`
-writes a **shareable** export: the unchanged publishable gate passed all 2,072
-scores, all nine input tables and every value in the lineage graph.
-`headroom reproduce` rebuilds the ranking (digest `8bdd46ec…` since the
-`recommended_get`-is-physics fix; the decision split and the GET set are export
-columns outside it, so it did not move again; the `v0.1` tag at `f707549` replays its
-own archived run at digest `a6750ade…`), the export decision, and byte-identical
-scores, shortlist, CSV, quality report and NOTICE (re-verified on 2026-10-25 at
-branch `claude/get-physics-split`). Later commits replay a run as
-long as they do not change the hashed pipeline code. Each export carries
+Verified on 2026-11-13. `headroom run --region spp` on snapshot `2026-10-13.r3`, at
+commit `331e8ec`, writes a **shareable** export: the unchanged publishable gate
+passed all 2,072 scores, all nine input tables and every value in the lineage graph.
+`headroom reproduce` rebuilds the ranking (digest `ef23654c…`), the export decision,
+and byte-identical scores, shortlist, CSV, quality report and NOTICE. Earlier runs on
+`2026-10-13.r2` replay at their own commits: digest `8bdd46ec…` after the
+`recommended_get`-is-physics fix (re-verified on 2026-10-25 at branch
+`claude/get-physics-split`), and the `v0.1` tag at `f707549` at digest `a6750ade…`. What
+the season signal changed is in [FLOWGATE_EVIDENCE.md](docs/FLOWGATE_EVIDENCE.md). Later
+commits replay a run as long as they do not change the hashed pipeline code. Each export carries
 `NOTICE.md`, which lists every source used with its terms. SPP's terms allow
 non-commercial use with citation; commercial use needs SPP's written authorization.
 
@@ -93,8 +95,9 @@ Real, from public sources (no keys, no accounts):
   interfaces. 2 phase shifters are excluded. They roll up to 892 corridors.
 - **Congestion dollars:** SPP's posted congestion by constraint, observed for 2,054
   flowgates ($2,408.7M). That is 1.23× SPP's settled DA Collected ($1,957.8M), and the
-  ratio is consistent month to month; see [CROSSCHECK.md](docs/CROSSCHECK.md). Binding
-  hours, breached hours and months binding come from the DA files.
+  ratio is consistent month to month; see [CROSSCHECK.md](docs/CROSSCHECK.md). The
+  same dollars are split by season. Binding hours, breached hours and months binding
+  come from the DA files.
 - **Topology:** 3,429 HIFLD Open lines (2023-09-05 edition) and 2,696 buses in the SWPP
   footprint, with 93.5 GW of EIA-860 generation attached.
 - **FERC Form 1 (PUDL v2024.11.0, report year 2023):** 1,898 rows for 16 SPP filers.
@@ -110,11 +113,17 @@ haircut, cost and next year's congestion are known. The inputs are:
 - **Forward rent:** 2025 dollars × the share of months the flowgate bound in × a
   persistence ratio from a held-out-months backtest
   ([FORWARD_RENT.md](docs/FORWARD_RENT.md)).
-- **Cited priors:** `config/get_priors.yaml`, version `spp-get-priors-2026-10-13.2`,
-  sha256 `d2dbd3ca…` ([GET_PRIORS.md](docs/GET_PRIORS.md)). They set relief share, a
+- **Cited priors:** `config/get_priors.yaml`, version `spp-get-priors-2026-10-13.3`,
+  sha256 `503e04a9…` ([GET_PRIORS.md](docs/GET_PRIORS.md)). They set relief share, a
   shared haircut, annualized cost, and applicability and relief scale by evidence
   class. The priors are judgement, not data, and their content is recorded in the run
   manifest.
+- **The season of each flowgate's congestion:** DLR's relief share is scaled by where
+  the flowgate's 2025 dollars fell, from 0.7 for all-summer congestion to 1.27 for
+  all-winter (means of the priors' season factors). DLR adds least over ambient-adjusted
+  ratings in hot, calm summers. This is the one flowgate-level signal the public data
+  supports; the others considered, and why they are not used, are in
+  [FLOWGATE_EVIDENCE.md](docs/FLOWGATE_EVIDENCE.md).
 
 The weighted composite is still exported as a diagnostic.
 
@@ -137,36 +146,45 @@ in the synthetic regions, the rule resolves one GET and `get_shown` is that GET.
 
 | # | Corridor | 2025 DA rent (champion flowgate) | Months binding | Expected net value, $M/yr (p5 to p95) | EV best bet | GETs the evidence leaves open | P(nothing deployed) |
 |---|---|---|---|---|---|---|---|
-| 1 | LN OSAGE_OG - WEBBTAP4 | $97.0M | 12 | 2.22 (−1.55 to 10.65) | DLR | DLR, APFC, TO or Combination | 0.25 |
-| 2 | LN CLEVLND7 - CLEV_AEC | $83.3M | 12 | 1.76 (−1.55 to 9.04) | DLR | DLR, APFC, TO or Combination | 0.26 |
-| 3 | LN NEBRCTY - SUB3456 | $77.3M | 12 | 1.62 (−1.67 to 8.57) | DLR | DLR, APFC, TO or Combination | 0.25 |
-| 4 | LN RUSSETT - SBROWN | $64.9M | 12 | 1.22 (−1.76 to 6.98) | DLR | DLR, APFC, TO or Combination | 0.26 |
-| 5 | LN FT_CAL - FT_CAL | $42.6M | 9 | 0.49 (−0.19 to 2.58) | DLR | DLR, APFC, TO or Combination | 0.42 |
-| 6 | LN OASIS - SAN_JUAN | $22.0M | 12 | 0.30 (−0.21 to 1.71) | DLR | DLR, APFC, TO or Combination | 0.42 |
-| 7 | XFMR EDWV - EDWV | $60.9M | 8 | 0.28 (−0.25 to 1.85) | TO | APFC or TO | 0.70 |
-| 8 | LN GORD - MAIZ | $40.2M | 6 | 0.27 (−0.22 to 1.54) | DLR | DLR, APFC, TO or Combination | 0.41 |
-| 9 | LN ANADARKO - GRACMONT | $30.6M | 7 | 0.22 (−0.24 to 1.32) | DLR | DLR, APFC, TO or Combination | 0.42 |
-| 10 | LN STONEWSW - TUPELO2 | $28.6M | 7 | 0.20 (−0.23 to 1.19) | DLR | DLR, APFC, TO or Combination | 0.42 |
+| 1 | LN OSAGE_OG - WEBBTAP4 | $97.0M | 12 | 2.29 (−1.50 to 11.50) | DLR | DLR, APFC, TO or Combination | 0.25 |
+| 2 | LN CLEVLND7 - CLEV_AEC | $83.3M | 12 | 1.59 (−1.59 to 8.26) | TO | DLR, APFC, TO or Combination | 0.26 |
+| 3 | LN NEBRCTY - SUB3456 | $77.3M | 12 | 1.55 (−1.69 to 7.97) | DLR | DLR, APFC, TO or Combination | 0.25 |
+| 4 | LN RUSSETT - SBROWN | $64.9M | 12 | 1.27 (−1.76 to 7.07) | DLR | DLR, APFC, TO or Combination | 0.25 |
+| 5 | LN FT_CAL - FT_CAL | $42.6M | 9 | 0.51 (−0.18 to 2.63) | DLR | DLR, APFC, TO or Combination | 0.41 |
+| 6 | LN OASIS - SAN_JUAN | $22.0M | 12 | 0.29 (−0.21 to 1.69) | DLR | DLR, APFC, TO or Combination | 0.43 |
+| 7 | XFMR EDWV - EDWV | $60.9M | 8 | 0.27 (−0.24 to 1.77) | TO | APFC or TO | 0.70 |
+| 8 | LN GORD - MAIZ | $40.2M | 6 | 0.25 (−0.21 to 1.52) | DLR | DLR, APFC, TO or Combination | 0.43 |
+| 9 | LN ANADARKO - GRACMONT | $30.6M | 7 | 0.25 (−0.23 to 1.47) | DLR | DLR, APFC, TO or Combination | 0.42 |
+| 10 | LN CARTR2 - CKSAW1 | $61.9M | 3 | 0.22 (−0.24 to 1.39) | DLR | DLR, APFC, TO or Combination | 0.42 |
 
-All ten bind under N-1 contingencies. A negative p5 means the deployment loses money in
-that draw. #5 has the same station name at both ends. It may be a bus tie or an
+All ten bind under N-1 contingencies. #2's EV best bet changed from DLR to TO: 68% of
+its dollars fell in June-August, where DLR adds least, so TO's relief now beats it
+where both apply. #10 is winter-heavy (80% in December-February) and rose from #12. A
+negative p5 means the deployment loses money in that draw. #5 has the same station name at both ends. It may be a bus tie or an
 intra-station segment, where no GET applies, so its `get_basis` carries a caution. The
 same is true of 16 scored "lines" in all.
 
-- **Value.** 53 of 2,054 flowgates (48 corridors) have a GET worth deploying. 47 of
-  them exceed $10k/yr, 20 exceed $100k/yr and 4 exceed $1M/yr. The total is
-  $11.4M/yr, against $2.4B of 2025 congestion. Relief shares of about 8%, a haircut of
+- **Value.** 55 of 2,054 flowgates (50 corridors) have a GET worth deploying. 48 of
+  them exceed $10k/yr, 19 exceed $100k/yr and 4 exceed $1M/yr. The total is
+  $11.3M/yr, against $2.4B of 2025 congestion. Relief shares of about 8%, a haircut of
   about 0.35 and costs of $0.1–0.9M/yr leave value only where congestion is large and
-  recurs. All 53 carry at least $5.5M of 2025 rent.
-  - The other 50 rows of the 103-row shortlist have no GET worth deploying. They are
+  recurs. All 55 carry at least $3.7M of 2025 rent.
+  - The other 48 rows of the 103-row shortlist have no GET worth deploying. They are
     ordered by the composite, as a watch list.
-- **GETs.** Of the 53, the EV best bet is DLR for 45 and topology optimization for 8.
+- **GETs.** Of the 55, the EV best bet is DLR for 46 and topology optimization for 9.
   Advanced power flow control never is: its expected net value where it applies is
   negative for 99 of the top 103 (mode cost $0.86M/yr).
-  - The EV best bet follows from the priors and the element type, not from a
-    flowgate's own data. Under these priors DLR outranks TO wherever both apply, and
-    outranks APFC below about $1.5B of forward rent
-    ([GET_PRIORS.md](docs/GET_PRIORS.md) section 10.1).
+  - The EV best bet follows mostly from the priors and the element type. Under these
+    priors DLR outranks APFC below about $1.5B of forward rent
+    ([GET_PRIORS.md](docs/GET_PRIORS.md) section 10.1), and it outranks TO wherever
+    both apply unless the flowgate's congestion is summer-heavy and large (#2).
+  - **Most picks and probabilities still follow the evidence class.** Applicability
+    is a prior per class (line, transformer, interface; BASE or N-1), and no public
+    data says whether a given element's limit can be relieved by a given GET. So 28 of
+    the 55 share one line split (nothing 0.6, DLR 0.4) and all 8 transformers share
+    another (nothing 0.7, TO 0.3). The season signal moves the ranking and 3 of the
+    top 103 EV best bets; it does not change shortlist membership
+    ([FLOWGATE_EVIDENCE.md](docs/FLOWGATE_EVIDENCE.md)).
   - One label hides the split. `ev_from_dlr/apfc/to/c_musd` give each option's part of
     the expected net value, and they sum to it. On the committed 59-flowgate real
     subset, the four leading lines take 34–39% of it from DLR, 30–32% from DLR plus
@@ -174,11 +192,14 @@ same is true of 16 scored "lines" in all.
 - **Sensitivity** (`scripts/ev_sensitivity.py`; each relief share, cost and the haircut
   at the ends of its range, each applicability ±0.25, and forward rent off).
   - **The leaders are stable:** under every perturbation at least 7 of the top 10 and
-    16 of the top 20 stay.
-  - **How many flowgates have a GET worth deploying is not stable.** It ranges from 16
-    (haircut at its low end) to 114 (TO cost at its low end), against 53. It depends
+    14 of the top 20 stay.
+  - **How many flowgates have a GET worth deploying is not stable.** It ranges from 14
+    (haircut at its low end) to 116 (DLR cost at its low end), against 55. It depends
     most on the DLR and TO annual costs and the haircut, then on DLR relief share.
-    Without forward rent, using the plain 2025 dollars, it is 86.
+    Without forward rent, using the plain 2025 dollars, it is 84.
+  - **The season factors matter little to the list:** at either end of either
+    triangle, or removed, 52-57 flowgates have a GET worth deploying, at least 9 of the
+    top 10 stay, and 97-99% of the top 103.
 - **Forward rent.** Within 2025, only about 30% of one half-year's top 5% recur in the
   other half. Weighting by months binding captures 66% of held-out dollars, against
   64% for the raw annual dollars. That is a modest gain, and it is not tested across
@@ -191,7 +212,8 @@ Not obtained, so marked unobserved (never zero; see `quality_report.json`):
   - Half the composite weight (0.50) is unobserved.
   - GET applicability can use only the element type, the contingency and the binding
     pattern. It cannot use parallel paths, terminal limits or line length, so the
-    evidence resolves one GET for none of the 2,072 flowgates (`get_resolved`).
+    evidence resolves one GET for none of the 2,072 flowgates (`get_resolved`). DLR's
+    relief share also uses the season of the congestion dollars.
 - **Planning (SPP ITP):** PDF only.
 - **Line voltages from EIA:** EIA publishes none.
 - **Real-time congestion and a second data year:** not read. The forward-rent model is

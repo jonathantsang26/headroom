@@ -12,7 +12,8 @@
 # One shared haircut, drawn independently of u (ev.py schema). h.hi is set so every single GET keeps
 #   u.hi x h.hi <= 0.08 (to-35 cap); Combination can exceed it (see report s.7).
 # line_radial and loopflow have no flowgates in the 2025 SPP data: their values are inert today.
-version: "spp-get-priors-2026-10-13.2"
+# Revision .3 (2026-11-06) adds DLR season_factor; nothing else changed (report s.4.2, s.11).
+version: "spp-get-priors-2026-10-13.3"
 haircut:
   lo: 0.10    # judgement: derived floor = to-29 RT production-cost savings ~3% (2-5%) of the initial RT rent of the relieved constraints (Brattle/NewGrid SPP MWG 2018 slide 21; n=4 hand-picked severe snapshots, units fixed) / all-case average flow relief 26-31% at fixed dispatch (slide 17; 17 focus constraints x 20 cases, not the 4 simulated) => ~0.10 (0.065-0.19); the ratio also folds in a rent-to-production-cost conversion (to-29 verifier); a floor for DA R_f, which is rarely breach-priced (54 of 135,820 binding hours breached: Headroom SPP 2025 congestion-by-constraint snapshot 2026-10-13.r2, breached_hours, my count)
   mode: 0.35  # judgement: h(u) shadow-price-decline argument (worked example, report s.3: unbinding margin uniform 0-0.10, u = 0.08 => h ~0.31 linear supply, ~0.60 step supply); margins are often < 0.10 (DOE SGDP 2014 printed p.44: +5% removes up to 60% of target-line rent; dlr-13, rent basis, not h); directional only: net/own rent 0.38 (Murphy et al. CIGRE 2018 Table 1 p.6; dlr-85, rent basis, spillover only); APC saving / rent REDUCTION 0.32-0.37 (EPRI 3002013930 2018 Table 3-7; apfc-9; vs base rent 589 M$ only ~0.06-0.12)
@@ -23,6 +24,23 @@ gets:
       lo: 0.02    # judgement: sheltered or hot/calm-binding lines where DLR adds little over AAR in binding hours; like-for-like DLR below AAR 22%/27% of hours summer/winter (CIGRE-US 2021 Table 5 p.8; aar-2, one line, normal ratings); DLR >=7% below ILR in ~20% of hours, median line (NREL/PR-6A40-91599 2024 slide 26; aar-18; ILR = 0.61 m/s static wind with measured irradiance, not an Order 881 AAR); DLR below undefined 'traditional' ratings 20-40% of the time (EPRI 3002030550 2024 p.4; aar-37)
       mode: 0.08  # emergency-basis central ~0.10 x judgement ~0.8 day-ahead forecast margin (aar-18 ratings are real-time; SPP AARs are forecast over 240 h, aar-32): N-1 classes hold 98% of 2025 line rent ((1530.2+160.7)/1727.6 $M, Headroom SPP 2025 snapshot, my count) and bind on emergency ratings; PPL emergency gain over AAR 8.5-16.5% used directly (FERC RM24-6 ANOPR 2024 P57; dlr-33); normal-rating anchors x judgement 0.6-0.8 give 0.04-0.14 (Oncor 6-14%/8-12%: DOE SGDP 2014 Table 2 p.19, dlr-7; NG MA 16.3%: aar-2; PPL normal ~17%: dlr-33); NREL median line, median hour +8% vs ILR (slide 26; aar-18) as a low cross-check; wind/binding coincidence taken as net ~1 (judgement; dlr-21, syntheses-20)
       hi: 0.15    # judgement: Oncor cap 125% and next limit ~133% of STATIC (DOE SGDP 2014 Table 6, fn 9 p.28; dlr-10) are only ~9-16% over AAR in summer (AAR +15.1% over static) and ~22-30% in winter (+2.7%) (aar-2 Table 5); NREL 20%-of-hours +26% vs ILR (aar-18) through the same 0.6-0.8 and 0.8 => 0.12-0.17; keeps u.hi x h.hi <= 0.08 (to-35)
+    # Per-flowgate relief factor by season (ev.py): relief_share x (1 + sum over seasons of the
+    # flowgate's share of observed 2025 congestion $ in that season x (factor - 1)); mam and son
+    # (not listed) count 1. relief_share above assumes the wind/binding coincidence nets to ~1 over
+    # SPP's binding mix; these factors let it differ by flowgate in the direction the sources give.
+    # 2025 SPP congestion $ by season (Headroom snapshot 2026-10-13.r3, my count): DJF 30.0%,
+    # MAM 28.3%, JJA 19.3%, SON 22.5% of $2,408.7M => the rent-weighted mean factor is 1.02
+    # (triangle means), so SPP-wide DLR relief moves by about +2%.
+    # Each factor is drawn once per draw and shared by all flowgates, independently of u.
+    season_factor:
+      jja:
+        lo: 0.5   # judgement: hot, calm summer-peak binding is where DLR adds least over AAR (DOE SGDP 2014 printed p.41, p.37; dlr-21; DOE 2022 printed pp.40-45, DLR below SLR in summer; syntheses-20); AAR already takes +15.1% over static in summer against +2.7% in winter (aar-2 Table 5), so less is left for DLR; 0.5 x mode 0.08 = 0.04, near relief_share.lo, which is described as hot/calm binding
+        mode: 0.7 # judgement: the over-AAR ceiling is ~9-16% in summer vs ~22-30% in winter (aar-2 via dlr-10, as for relief_share.hi), a winter/summer ratio ~2.1; shaded to 1.3/0.7 = 1.86 because like-for-like DLR fell below AAR in slightly more winter hours (27%) than summer hours (22%) (aar-2 Table 5 p.8)
+        hi: 0.9   # judgement: summer stays below the all-season central in every draw (AAR's summer gain over static is the largest of the year, aar-2)
+      djf:
+        lo: 1.0   # judgement: no winter gain beyond the all-season central
+        mode: 1.3 # judgement: see jja.mode (aar-2 via dlr-10, ratio shaded to 1.86); AAR adds only +2.7% over static in winter (aar-2), so DLR's wind cooling is mostly additional
+        hi: 1.5   # judgement: ~2.1 x jja.mode 0.7 (the unshaded aar-2 ceiling ratio); 1.5 x relief_share.hi 0.15 = 0.225 lets u x h exceed the 0.08 to-35 cap for winter-binding lines in some draws (report s.4.2: the cap is a system total, and the rent-weighted factor mean stays ~1)
     annual_cost_musd:
       lo: 0.034   # capex $0.15M x CRF(6%,12y) 0.1193 + O&M ~$0.016M/yr (DOE Liftoff 2024 printed p.87: 20% of $70k licence + 10% of $15k sensors/telecom = $15.5k 2024$; syntheses-61, illustrative); capex: MISO TOs $0.1-0.2M/line 2021$ => $0.12-0.24M (FERC AD22-5 NOI 2022 p.10 fn 24; dlr-40, ex-ante); DOE NY ~$0.1-0.2M/segment (INL 2023 p.8; syntheses-89)
       mode: 0.10  # capex $0.6M (2025$) x 0.1193 + O&M ~$0.031M/yr (Liftoff ~$0.016M, syntheses-61, + judgement ~$0.015M allocated FTE/EMS integration); capex anchors escalated: PJM ~$0.5M 2018$ => ~$0.64M, excl. station upgrade (Murphy et al. CIGRE 2018 p.7; dlr-86); PPL <$0.5M per two-circuit corridor ~2021-22$ => <$0.6M, <$0.3M per circuit (FERC ANOPR P74; dlr-35); Liftoff ~$0.6M/line 2024$ (syntheses-60, illustrative); life 10-15 y, 12 central (DOE 2022 printed pp.60, 64; dlr-77, syntheses-11)
