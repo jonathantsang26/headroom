@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import io
 import json
 import sys
@@ -31,28 +30,27 @@ import yaml
 
 from headroom.ingest.adapters.common import raw_entry
 from headroom.ingest.snapshot import Snapshot
-from headroom.model.forward import PREDICTORS, backtest, ratio_mean, ratio_quantiles
+from headroom.model.forward import (PREDICTORS, backtest, cbc_raw_keys, cbc_raw_sha256,
+                                    ratio_mean, ratio_quantiles)
 
 RULE = ("within-year splits (H1->H2, H2->H1, odd->even, even->odd); predictor with the "
         "highest mean held-out capture at top 5%; eps = p0..p99 of the leaders' "
         "system-normalized realized/predicted ratios, 3 significant figures, p1 = p99")
 
 
-def monthly_matrix(snapshot_dir: str | Path) -> tuple[list[str], np.ndarray, list[str]]:
-    """(constraint ids, $M by month, raw sha256s) from the snapshot's CBC files.
-    Duplicate (month, constraint, contingency) rows count once; negative months are 0,
-    as in the adapter."""
+def monthly_matrix(snapshot_dir: str | Path) -> tuple[list[str], np.ndarray]:
+    """(constraint ids, $M by month) from the snapshot's CBC files, each re-verified
+    against its manifest sha256. Duplicate (month, constraint, contingency) rows count
+    once; negative months are 0, as in the adapter."""
     snap = Snapshot(snapshot_dir)
-    years = {k[len("raw:spp_cbc_"):][:4] for k in snap.manifest.get("raw", {})
-             if k.startswith("raw:spp_cbc_")}
-    if len(years) != 1:
-        raise ValueError(f"{snap.root} needs the CBC files of exactly one year, has {years}")
-    year = int(years.pop())
+    try:
+        keys = cbc_raw_keys(snap.manifest.get("raw", {}))
+    except ValueError as e:
+        raise ValueError(f"{snap.root} {e}") from None
     per: dict[str, np.ndarray] = defaultdict(lambda: np.zeros(12))
-    seen, shas = set(), []
-    for month in range(1, 13):
-        e = raw_entry(snap.root, f"raw:spp_cbc_{year}{month:02d}")
-        shas.append(e["sha256"])
+    seen = set()
+    for month, key in enumerate(keys, start=1):
+        e = raw_entry(snap.root, key)
         text = Path(e["abspath"]).read_bytes().decode("utf-8-sig")
         reader = csv.reader(io.StringIO(text, newline=""))
         header = [h.strip() for h in next(reader)]
@@ -68,12 +66,12 @@ def monthly_matrix(snapshot_dir: str | Path) -> tuple[list[str], np.ndarray, lis
             if usd > 0:
                 per[f"{r['Constraint Name']}|{r['Contingency Name']}"][month - 1] += usd
     ids = sorted(per)
-    return ids, np.array([per[i] for i in ids]), shas
+    return ids, np.array([per[i] for i in ids])
 
 
 def derive(snapshot_dir: str) -> dict:
     snap = Snapshot(snapshot_dir)
-    ids, monthly, shas = monthly_matrix(snapshot_dir)
+    ids, monthly = monthly_matrix(snapshot_dir)
     bt = backtest(monthly)
     chosen = max(PREDICTORS, key=lambda p: bt[p]["mean_capture"])
     quantiles = ratio_quantiles(bt[chosen]["ratios"])
@@ -83,7 +81,7 @@ def derive(snapshot_dir: str) -> dict:
             **spec,
             "rule": RULE,
             "derived_from_snapshot": snap.root.name,
-            "cbc_raw_sha256": hashlib.sha256("".join(shas).encode()).hexdigest(),
+            "cbc_raw_sha256": cbc_raw_sha256(snap.manifest["raw"]),
             "ratio_mean": round(ratio_mean(spec), 3),
             "backtest": {
                 p: {"mean_capture": round(bt[p]["mean_capture"], 4),

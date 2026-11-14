@@ -109,6 +109,9 @@ class IngestBundle:
     # Per-table provenance stamps (live regions only; empty for fixtures).
     table_stamps: dict[str, SourceStamp] = field(default_factory=dict)
     input_identity: dict = field(default_factory=dict)
+    # The snapshot manifest's raw-input records (live regions only). Not part of the
+    # input identity, which pins the manifest that holds them.
+    raw_inputs: dict = field(default_factory=dict)
     # table -> Fact ids standing for "this whole table" (used by values derived
     # from a table's content or from a row's absence in it).
     table_lineage: dict[str, list[str]] = field(default_factory=dict)
@@ -175,6 +178,7 @@ def _load_live(
         column_sources=column_sources,
     )
     bundle.table_stamps = stamps
+    bundle.raw_inputs = snap.manifest.get("raw") or {}
     bundle.table_sources = {
         t: [stamps[t], *contributors[t], *column_sources[t].values()] for t in REQUIRED_TABLES
     }

@@ -57,7 +57,9 @@ Three consequences:
 
 The calibration is recorded in `config/regions/spp.scoring.yaml` under `forward_rent`:
 the predictor, the quantiles, the snapshot, the sha256 of the twelve raw files, and
-the backtest table. Every run manifest carries it too. To re-derive and check it:
+the backtest table. Every run manifest carries it too. A run fails closed when that
+sha256 does not match the CBC files its snapshot manifest records. To re-derive and
+check it:
 
 ```bash
 .venv/bin/python scripts/backtest_forward_rent.py data/raw/spp/2026-10-13.r2 --check config/regions/spp.scoring.yaml

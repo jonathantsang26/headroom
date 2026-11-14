@@ -1,5 +1,8 @@
 """Forward rent for the EV layer (model/forward.py) and its backtest."""
 
+import hashlib
+import json
+import shutil
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -11,8 +14,9 @@ import yaml
 from headroom.ingest.region import REGIONS, RegionConfig
 from headroom.model import ScoringConfig
 from headroom.model.ev import SINGLE_GETS
-from headroom.model.forward import (backtest, predict, ratio_mean, ratio_quantiles,
-                                    ratio_sampler, share, validate_forward)
+from headroom.model.forward import (backtest, cbc_raw_sha256, check_forward_rent_rule,
+                                    predict, ratio_mean, ratio_quantiles, ratio_sampler,
+                                    share, validate_forward)
 from headroom.pipeline import run_pipeline
 
 SUBSET = Path(__file__).parent / "fixtures" / "real_samples" / "spp_snapshot" / "2026-10-13.r2"
@@ -69,3 +73,49 @@ def test_ev_draws_use_forward_rent(monkeypatch):
         assert s.ev_mean == pytest.approx(want) and s.ev.lo == pytest.approx(want)
         assert "forward rent" in s.ev.basis
     assert result.quality_report["ev"]["forward_rent"]["predictor"] == "months_binding_share"
+
+
+def _cbc_raw(year: str = "2025") -> dict:
+    return {f"raw:spp_cbc_{year}{m:02d}": {
+        "path": f"raw/spp/spp_cbc_{year}{m:02d}.csv", "sha256": f"{m:064x}",
+        "retrieved_at": "2026-10-13T08:38:09+00:00", "url": f"https://example.test/{m}",
+    } for m in range(1, 13)}
+
+
+def test_forward_rent_rule_ties_a_derived_spec_to_its_cbc_files():
+    raw = _cbc_raw()
+    # the digest backtest_forward_rent.py records: the monthly sha256s, in month order
+    want = hashlib.sha256("".join(f"{m:064x}" for m in range(1, 13)).encode()).hexdigest()
+    assert cbc_raw_sha256(raw) == want
+    derived = {**FLAT, "derived_from_snapshot": "s", "cbc_raw_sha256": want}
+    check_forward_rent_rule(derived, raw)
+    check_forward_rent_rule(None, {})  # no calibration: nothing to tie
+    check_forward_rent_rule(FLAT, {})  # hand-specified: no derivation to tie
+    with pytest.raises(ValueError, match="backtest_forward_rent"):
+        check_forward_rent_rule({**derived, "cbc_raw_sha256": "0" * 64}, raw)
+    with pytest.raises(ValueError, match="records no cbc_raw_sha256"):
+        check_forward_rent_rule({**FLAT, "derived_from_snapshot": "s"}, raw)
+    del raw["raw:spp_cbc_202507"]
+    with pytest.raises(ValueError, match="cannot be tied.*spp_cbc_202507"):
+        check_forward_rent_rule(derived, raw)
+    with pytest.raises(ValueError, match="exactly one year"):
+        check_forward_rent_rule(derived, {**_cbc_raw(), **_cbc_raw("2024")})
+
+
+def test_pipeline_refuses_a_forward_rent_derived_from_other_cbc_files(tmp_path, monkeypatch):
+    snap = tmp_path / "snap"
+    shutil.copytree(SUBSET, snap)
+    manifest = json.loads((snap / "snapshot_manifest.json").read_text())
+    manifest["raw"] = {**manifest.get("raw", {}), **_cbc_raw()}
+    (snap / "snapshot_manifest.json").write_text(json.dumps(manifest))
+    for name, root in (("spp-forward-cbc", snap), ("spp-forward-no-cbc", SUBSET)):
+        monkeypatch.setitem(REGIONS, name, RegionConfig(name, "SPP", root, synthetic=False))
+    derived = {**FLAT, "derived_from_snapshot": "snap", "cbc_raw_sha256": cbc_raw_sha256(_cbc_raw())}
+    sc = replace(ScoringConfig.load(), draws=50, forward_rent=derived)
+
+    run_pipeline("spp-forward-cbc", scoring=sc)  # the files it was derived from: runs
+    with pytest.raises(ValueError, match="backtest_forward_rent"):
+        run_pipeline("spp-forward-cbc",
+                     scoring=replace(sc, forward_rent={**derived, "cbc_raw_sha256": "0" * 64}))
+    with pytest.raises(ValueError, match="cannot be tied"):
+        run_pipeline("spp-forward-no-cbc", scoring=sc)  # snapshot records no CBC files

@@ -12,7 +12,9 @@ import numpy as np
 import pytest
 
 from headroom.ingest.region import REGIONS, RegionConfig
+from headroom.ingest.snapshot import Snapshot
 from headroom.model import ScoringConfig
+from headroom.model.forward import check_forward_rent_rule
 from headroom.model.references import check_reference_rule, derive_references
 from headroom.pipeline import run_pipeline
 
@@ -134,3 +136,9 @@ def test_committed_forward_rent_matches_the_live_snapshot():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert mod.main([str(LIVE), "--check", str(SPP_SCORING)]) == 0
+
+
+@pytest.mark.skipif(not LIVE.exists(), reason="the pinned live snapshot is not on this machine")
+def test_committed_forward_rent_passes_the_run_time_check_on_the_live_snapshot():
+    spp = ScoringConfig.load(SPP_SCORING)
+    check_forward_rent_rule(spp.forward_rent, Snapshot(LIVE).manifest["raw"])

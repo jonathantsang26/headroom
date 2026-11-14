@@ -49,7 +49,8 @@ value of the decision: the mean over applicability draws of the chosen GET's exp
 net value.
 The EV Range is the p5/p50/p95 of the realized value. p_top_k (the share of draws in the
 top k by realized value with a positive realized value) is reported for stability and
-does not order the list. The recommendation is the GET contributing most to ev_mean
+does not order the list. The recommendation (exported as ev_recommended_get; it never
+replaces the evidence rule's recommended_get) is the GET contributing most to ev_mean
 (none when no GET is ever worth deploying); how often each option is chosen and each
 GET's expected net value where it applies are reported beside it.
 """

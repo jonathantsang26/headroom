@@ -95,7 +95,7 @@
                   <th data-sort="rent" class="r">2025 DA rent</th>
                   <th data-sort="months" class="r">Months</th>
                   <th data-sort="ev">Expected net value, $M/yr · p5 to p95</th>
-                  <th>GET</th>
+                  <th title="Set by element class, not by flowgate">GET (class)</th>
                   <th data-sort="none" class="r">P(none)</th>
                 </tr>
               </thead>
@@ -103,6 +103,7 @@
             </table>
             <div class="empty" id="sl-empty" hidden>No rows match.</div>
           </div>
+          <p class="sl-note"><b>GET is a class default, not a per-flowgate fit.</b> Applicability priors are set per element class, so lines and interfaces get DLR and transformers get topology optimization. Within a class, expected value tracks 2025 rent × months binding.</p>
         </div>
 
         <div class="panel findings">
@@ -110,7 +111,7 @@
           <ul class="events">
             <li><i class="ic ic-fact"></i><div><b>$2.4B of 2025 congestion</b> across 2,072 binding flowgates <span class="chip fact">FACT</span><small>SPP congestion by constraint, 12 monthly archives</small></div></li>
             <li><i class="ic ic-range"></i><div><b>53 flowgates have a GET worth deploying</b> <span class="chip range">RANGE</span><small>48 corridors · $11.4M/yr in total</small></div></li>
-            <li><i class="ic ic-range"></i><div><b>DLR for 45, topology optimization for 8</b> <span class="chip range">RANGE</span><small>Power-flow control never: negative for 99 of the top 103</small></div></li>
+            <li><i class="ic ic-range"></i><div><b>DLR for 45, topology optimization for 8</b> <span class="chip range">RANGE</span><small>Set by element class, not by flowgate. Power-flow control never wins.</small></div></li>
             <li><i class="ic ic-range"></i><div><b>The leaders are stable</b> <span class="chip range">RANGE</span><small>≥7 of the top 10 and ≥16 of the top 20 hold under every perturbation</small></div></li>
             <li><i class="ic ic-warn"></i><div><b>The count worth deploying is not</b> <span class="chip range">RANGE</span><small>16 to 114 against 53; driven by DLR and TO costs and the haircut</small></div></li>
             <li><i class="ic ic-none"></i><div><b>Half the composite weight is unobserved</b> <span class="chip none">UNOBSERVED</span><small>Loading, demand pressure and radial need the CEII bus map</small></div></li>
@@ -176,6 +177,7 @@
             <div><span>Topology optimization</span><i style="width:15.1%"></i><b>8</b></div>
             <div><span>Power-flow control</span><i style="width:0%"></i><b>0</b></div>
           </div>
+          <p class="note">These follow element class: lines and interfaces get DLR, transformers get topology optimization. Which GET fits a particular flowgate needs its location, length and loading, which are not public.</p>
           <div class="subhead"><h3>Value tiers</h3><span class="muted">of 53</span></div>
           <div class="hbars">
             <div><span>&gt; $10k/yr</span><i style="width:88.7%"></i><b>47</b></div>
@@ -206,7 +208,7 @@
             <li><b>Pin the inputs.</b> Nine public tables are stamped and SHA256-verified into one snapshot. A live run refuses stamps that differ from the pins.</li>
             <li><b>Score every binding flowgate.</b> 2,072 elements from SPP's 2025 day-ahead binding-constraint archives roll up to 892 corridors.</li>
             <li><b>Forecast rent.</b> 2025 dollars × share of months binding × a persistence ratio from a held-out-months backtest (66% of held-out dollars captured, against 64% for raw annual).</li>
-            <li><b>Decide under uncertainty.</b> For each flowgate: find which GETs apply, then deploy the one with the highest expected net value, or none. Relief, haircut, cost and next year's congestion are drawn 10,000 times from cited priors.</li>
+            <li><b>Decide under uncertainty.</b> For each flowgate: find which GETs apply, then deploy the one with the highest expected net value, or none. Relief, haircut, cost and next year's congestion are drawn 10,000 times from cited priors. Applicability is set per element class, so flowgates of one class differ only in their congestion.</li>
             <li><b>Gate the export.</b> Lineage that touches synthetic or non-publishable data blocks a shareable export.</li>
             <li><b>Replay.</b> <span class="mono">headroom reproduce</span> rebuilds the ranking, the export decision and byte-identical outputs from the manifest.</li>
           </ol>
@@ -286,6 +288,7 @@
       <section class="card">
         <div class="ch"><h2>What it does not know</h2></div>
         <ul class="ticks warn">
+          <li>Which GET fits a particular flowgate. Until location, length and loading are observed, the pick is the default for its element class.</li>
           <li>Where SPP's monitored elements are. The bus map is CEII, so loading, demand pressure and radial stay unobserved.</li>
           <li>SPP's planning projects. The ITP is published as PDF only.</li>
           <li>Real-time congestion or a second market year. Forward rent is calibrated within 2025.</li>

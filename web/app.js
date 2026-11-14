@@ -69,7 +69,7 @@ function select(rank) {
     ['Contingency', r.contingency ? `<span class="mono">${esc(r.contingency)}</span>` : '—'],
     ['2025 DA rent', `$${r.rent.toFixed(1)}M`],
     ['Binding', `${r.months} of 12 months · ${r.hours.toLocaleString()} h`],
-    ['GET', GET_NAME[r.get]],
+    ['GET', r.get ? `${GET_NAME[r.get]} · default for its class` : GET_NAME[r.get]],
     ['P(none deployed)', r.none.toFixed(2)]
   ];
   if (r.caution) rows.push(['Caution', CAUTION[r.caution] ?? esc(r.caution)]);
