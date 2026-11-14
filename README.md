@@ -77,9 +77,9 @@ of `headroom panel`: [PANEL.md](docs/PANEL.md).
 
 ## Status
 Verified on 2026-11-13. `headroom run --region spp` on snapshot `2026-10-13.r3`, at
-commit `MERGE_COMMIT`, writes a **shareable** export: the unchanged publishable gate
+commit `331e8ec`, writes a **shareable** export: the unchanged publishable gate
 passed all 2,072 scores, all nine input tables and every value in the lineage graph.
-`headroom reproduce` rebuilds the ranking (digest `RUN_DIGEST…`), the export decision,
+`headroom reproduce` rebuilds the ranking (digest `ef23654c…`), the export decision,
 and byte-identical scores, shortlist, CSV, quality report and NOTICE. Earlier runs on
 `2026-10-13.r2` replay at their own commits: digest `8bdd46ec…` after the
 `recommended_get`-is-physics fix (re-verified on 2026-10-25 at branch

@@ -33,10 +33,12 @@ flowgate, and applicability was set per evidence class (`line_n1`, `transformer_
 - **Value tracked rent.** Within `line_n1`, ev_mean had Spearman 0.999 with rent ×
   months binding / 12.
 
-`evidence_rule_get` is a separate rule over the element type and the contingency. It
+The evidence rule is a separate pick over the element type and the contingency. It
 gives APFC to 1,901 of 2,072 flowgates, because SPP's bus map is CEII and the rule
-cannot see topology. This change leaves it alone. Under `ranking: ev`,
-`recommended_get` is the EV layer's pick, and that is the column that moves.
+cannot see topology, and the evidence leaves every GET its element type allows open
+(`get_set`). Since PR #4 it is `recommended_get` under every ranking, and the EV
+layer's pick is `ev_recommended_get`. This change leaves the evidence rule alone and
+moves the EV pick.
 
 ## 2. The candidates, measured on snapshot 2026-10-13
 
@@ -85,41 +87,46 @@ cannot see topology. This change leaves it alone. Under `ranking: ev`,
 
 ## 4. The run, before and after
 
-- **Before:** commit `3e57765` (main) on snapshot `2026-10-13.r2`, priors `.2`. Ranking
-  digest `a6750ade…`, the README's verified run, reproduced here.
-- **After:** commit `eb8939c` on snapshot `2026-10-13.r3`, priors
+- **Before:** main at `872393e` on snapshot `2026-10-13.r2`, priors `.2`. Ranking digest
+  `8bdd46ec…`, main's verified run, reproduced here. Its EV values and order are
+  identical to the `3e57765` run (digest `a6750ade…`) this change was first measured
+  against; PR #4 only moved the EV pick into its own column.
+- **After:** merge commit `331e8ec` on snapshot `2026-10-13.r3`, priors
   `spp-get-priors-2026-10-13.3` (sha256 `503e04a9…`). Shareable. Ranking digest
-  `db3d36ae…`, and `headroom reproduce` rebuilds byte-identical scores, shortlist,
-  CSV, quality report and NOTICE.
-- The old manifest still replays byte-identical at `3e57765`. At the new commit it is
-  refused, because the pipeline code changed. Neither snapshot was modified.
+  `ef23654c…`, and `headroom reproduce` rebuilds byte-identical scores, shortlist,
+  CSV, quality report and NOTICE. (The branch's pre-merge commit `eb8939c` gave the
+  same EV values, digest `db3d36ae…`.)
+- The old manifests still replay byte-identical at their own commits (`3e57765`,
+  `872393e`). At the new commit they are refused, because the pipeline code changed.
+  Neither snapshot was modified.
 
 | | Before | After |
 |---|---|---|
 | Flowgates with a GET worth deploying | 53 | 55 |
-| Their picks (`recommended_get`) | DLR 45, TO 8 | DLR 46, TO 9 |
-| Picks across all 2,072 | none 2,001, APFC 17, DLR 46, TO 8 | none 1,999, APFC 17, DLR 47, TO 9 |
+| Their EV picks (`ev_recommended_get`) | DLR 45, TO 8 | DLR 46, TO 9 |
+| EV picks across all 2,072 | none 2,001, DLR 45, TO 8, unobserved 18 | none 1,999, DLR 46, TO 9, unobserved 18 |
 | Distinct probability splits among the positive ones, to the nearest 0.05 | 8 | 9 |
 | Distinct splits to 4 decimals (mostly Monte Carlo noise) | 49 | 51 |
 | Top 103: members changed | | 0 in, 0 out |
-| Top 103: pick changed | | 3 |
+| Top 103: EV pick changed | | 3 |
 | Top 103: probability split changed (to 4 decimals) | | 55 |
 | Top 103: rank changed | | 54 |
 | Spearman of ev_mean with rent × months / 12, positive `line_n1` | 0.999 (41) | 0.977 (43) |
 | Sum of mean EV | $11.44M/yr | $11.31M/yr |
-| `evidence_rule_get` | APFC 1,901, DLR 170, DLR+APFC 1 | unchanged |
+| `recommended_get` (the evidence rule) | APFC 1,901, DLR 170, DLR+APFC 1 | unchanged |
 
-APFC picks across all 2,072 are flowgates without observed dollars, which keep the
-evidence rule's pick.
+The 18 unobserved flowgates have no observed dollars, so they have no EV pick.
+`recommended_get`, the evidence rule's pick, is unchanged: APFC 1,901, DLR 170,
+DLR+APFC 1.
 
-The three picks that changed:
+The three EV picks that changed:
 - **#2, LN CLEVLND7 - CLEV_AEC** (`TMP270_23432|18695`): DLR to **TO**. 68% of its
   $83.3M fell in June-August, so its DLR factor is 0.81. Where both apply, TO's
   relief now beats DLR's at this rent.
 - **#50 (`TMP709_30212|7525`) and #52 (`TMP760_29357|7213`)**: none to **DLR**. Both are
   winter-heavy (factors 1.23 and 1.16), which lifts DLR above its cost.
 
-New top 10 (flowgates; GET is `recommended_get`; p is none / DLR / APFC / TO / DLR+APFC):
+New top 10 (flowgates; GET is the EV pick, `ev_recommended_get`; p is none / DLR / APFC / TO / DLR+APFC):
 
 | # | Monitored element | Class | EV mean, $M/yr | 2025 rent | DJF / JJA share | DLR factor | GET | p | Before |
 |---|---|---|---|---|---|---|---|---|---|
