@@ -277,5 +277,22 @@ def test_raw_entries_cannot_point_outside_the_snapshot(tmp_path):
     outside.write_bytes(b"x")
     update_manifest(snap, raw={"raw:escape": {"path": "../elsewhere.bin",
                                               "sha256": common.sha256_of(outside)}})
-    with pytest.raises(ValueError, match="leaves the snapshot"):
+    with pytest.raises(ValueError, match="escapes the snapshot"):
         common.raw_entry(snap, "raw:escape")
+
+
+@pytest.mark.parametrize("field,value,match", [
+    ("url", "", "nonempty url"),
+    ("retrieved_at", "2026-10-12T00:00:00", "timezone-aware"),
+    ("sha256", "abc", "invalid sha256"),
+])
+def test_raw_entries_need_a_full_retrieval_record(tmp_path, field, value, match):
+    snap = _snapshot(tmp_path)
+    path = snap / "raw" / "layer.json"
+    path.write_bytes(LAYER)
+    common.record_raw(snap, "raw:layer", "https://example.invalid/layer.json", path)
+    assert common.raw_entry(snap, "raw:layer")["abspath"] == path.resolve()
+    entry = json.loads((snap / "snapshot_manifest.json").read_text())["raw"]["raw:layer"]
+    update_manifest(snap, raw={"raw:layer": {**entry, field: value}})
+    with pytest.raises(ValueError, match=match):
+        common.raw_entry(snap, "raw:layer")

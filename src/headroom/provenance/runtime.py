@@ -8,7 +8,7 @@ from importlib import metadata
 from pathlib import Path
 
 _SOURCE_DIRS = (
-    "ingest", "quality", "reconstruct", "model", "provenance", "schema", "sources",
+    "ingest", "quality", "reconstruct", "model", "provenance", "schema", "sources", "panel",
 )
 _DEPENDENCIES = ("numpy", "pydantic", "PyYAML")
 

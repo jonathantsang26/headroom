@@ -1,0 +1,8 @@
+element_id,element_kind,constraint_id,corridor_id,match_status,evidence,evidence_refs,reviewed_by,reviewed_on
+SITE_A,site,FLOWGATE_1,COR_1,verified,"Fabricated fixture: monitored facility text names SYNTH_SUB_A, which serves SITE_A.",fixture:note-1,fixture-reviewer,2026-09-25
+SITE_A,site,FLOWGATE_2,COR_1,uncertain,Fabricated fixture: facility text could refer to either of two synthetic substations.,fixture:note-2,,
+NODE_B,settlement_location,,,unmatched,Fabricated fixture: no public shift factors relate this node to a constraint.,,,
+COR_2,corridor,FLOWGATE_3,COR_2,verified,Fabricated fixture: the monitored facility is the COR_2 line.,fixture:note-3,fixture-reviewer,2026-09-25
+COR_2,corridor,FLOWGATE_6,COR_2,verified,Fabricated fixture: the contingency is an outage of the COR_2 line.,fixture:note-4,fixture-reviewer,2026-09-25
+COUNTY_X,county,FLOWGATE_4,COR_3,verified,Fabricated fixture: the monitored transformer lies in COUNTY_X.,fixture:note-5,fixture-reviewer,2026-09-25
+FLOWGATE_9,constraint,FLOWGATE_9,,verified,Fabricated fixture: constraint named directly by the buyer.,fixture:note-6,fixture-reviewer,2026-09-25
