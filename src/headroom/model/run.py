@@ -252,6 +252,9 @@ def _apply_ev(scores: list[Score], bb: BucketBResult, radial_by_cid: dict, cfg: 
         "priors_version": res.priors_version, "priors_sha256": res.priors_sha256,
         "forward_rent": cfg.forward_rent,
         "n_positive": sum(1 for v in res.ev_mean.values() if v > 0),
+        # cid -> {option: its part of ev_mean}. Held here, not on Score, so exporting the
+        # decision split leaves the ranking digest unchanged.
+        "option_value": res.option_value,
     }
     return res.k if cfg.ranking == "ev" else k
 
