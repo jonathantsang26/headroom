@@ -288,6 +288,46 @@ def test_zero_months_inherit_coverage_taint(tmp_path):
     assert result.store.source_closure(binding.lineage_id) == {"test_public"}
 
 
+def _cost_sourced(tmp_path, cost_source: str) -> PanelRegion:
+    """Publishable tables whose congestion dollars come from a second, contributing source."""
+    region = _restamped(tmp_path, constraint_history="test_public", constraint_coverage="test_public")
+    manifest = json.loads((region.data_dir / MANIFEST_NAME).read_text())
+    stamp = {"source": cost_source, "source_version": "test",
+             "retrieved_at": "2026-09-25T00:00:00+00:00"}
+    manifest["tables"]["constraint_history"]["contributors"] = [stamp]
+    manifest["tables"]["constraint_history"]["column_sources"] = {"congestion_cost_usd": stamp}
+    (region.data_dir / MANIFEST_NAME).write_text(json.dumps(manifest))
+    return region
+
+
+def test_column_sources_stamp_their_own_values(tmp_path):
+    region = _cost_sourced(tmp_path, "test_cost")
+    result = build_panel(region, FOOTPRINT, registry=_registry(test_public=True, test_cost=True))
+    cell = _cell(result, "FLOWGATE_1", "DA", "2025-01")
+    closure = {name: result.store.source_closure(f.lineage_id) for name, f in cell.values.items()}
+    assert closure == {"hours_binding": {"test_public"}, "shadow_price_max": {"test_public"},
+                       "shadow_price_mean": {"test_public"},
+                       "congestion_cost_usd": {"test_cost"}}
+    s = _summary(result, "FLOWGATE_1", "DA")
+    assert result.store.source_closure(s.values["congestion_cost_usd"].lineage_id) == {"test_cost"}
+    assert result.store.source_closure(s.values["hours_binding"].lineage_id) == {"test_public"}
+
+    d = deliver_panel(result, tmp_path / "out")
+    assert d.mode == "shareable"
+    history = json.loads(Path(d.paths["panel_json"]).read_text())["sources"]["tables"][
+        "constraint_history"]
+    assert [c["source"] for c in history["contributors"]] == ["test_cost"]
+    assert history["contributors"][0]["publishable"] is True
+    assert history["column_sources"] == {"congestion_cost_usd": "test_cost"}
+
+
+def test_restricted_contributor_forces_internal(tmp_path):
+    region = _cost_sourced(tmp_path, "test_cost")
+    result = build_panel(region, FOOTPRINT, registry=_registry(test_public=True, test_cost=False))
+    assert blocked_sources(result) == ["test_cost"]
+    assert deliver_panel(result, tmp_path / "out").mode == "internal"
+
+
 def test_panel_code_is_part_of_runtime_identity():
     assert "panel" in _SOURCE_DIRS
 

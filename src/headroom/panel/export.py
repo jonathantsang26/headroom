@@ -27,6 +27,8 @@ CAVEATS = (
     "Footprint matches are manual. Only verified matches with recorded evidence are "
     "included; all others are listed as unresolved.",
     "Shadow prices and congestion cost appear only where the source publishes them.",
+    "Congestion cost is as posted: a month the source posts as negative stays negative, "
+    "and window totals net it.",
 )
 MONTHLY_COLUMNS = (
     "constraint_id", "market", "period", "coverage", "days_covered", "days_expected",
@@ -138,19 +140,30 @@ def coverage_rows(result: PanelResult) -> list[dict]:
     return rows
 
 
+def _cited(result: PanelResult, stamp) -> dict:
+    spec = result.registry.get(stamp.source)
+    return {
+        "source": stamp.source,
+        "source_version": stamp.source_version,
+        "retrieved_at": stamp.retrieved_at.isoformat(),
+        "publishable": bool(spec and spec.publishable),
+        "basis": spec.compliance.basis if spec else "unregistered source",
+    }
+
+
 def source_citations(result: PanelResult) -> dict:
-    """What a brief cites: each table's stamp and each raw input's retrieval record."""
+    """What a brief cites: each table's stamps (its own, contributors, and the source of
+    each per-column value) and each raw input's retrieval record."""
     tables = {}
     for table, stamp in result.inputs.stamps.items():
-        spec = result.registry.get(stamp.source)
         tables[table] = {
-            "source": stamp.source,
-            "source_version": stamp.source_version,
-            "retrieved_at": stamp.retrieved_at.isoformat(),
+            **_cited(result, stamp),
             "sha256": result.inputs.input_identity["tables"][table]["sha256"],
             "derived_from": list(result.inputs.derived_from[table]),
-            "publishable": bool(spec and spec.publishable),
-            "basis": spec.compliance.basis if spec else "unregistered source",
+            "contributors": [_cited(result, c) for c in result.inputs.contributors[table]],
+            "column_sources": {
+                col: s.source for col, s in sorted(result.inputs.column_sources[table].items())
+            },
         }
     raw = [
         {"key": key, "url": c["url"], "retrieved_at": c["retrieved_at"], "sha256": c["sha256"]}
@@ -171,8 +184,12 @@ def _emitted(result: PanelResult) -> list[Fact]:
 
 
 def blocked_sources(result: PanelResult) -> list[str]:
-    """Sources behind any emitted value, or any input table, that are not publishable."""
-    sources = {stamp.source for stamp in result.inputs.stamps.values()}
+    """Sources behind any emitted value, or any input table's stamps, that are not
+    publishable."""
+    inputs = result.inputs
+    sources = {stamp.source for stamp in inputs.stamps.values()}
+    sources |= {c.source for stamps in inputs.contributors.values() for c in stamps}
+    sources |= {s.source for cols in inputs.column_sources.values() for s in cols.values()}
     for fact in _emitted(result):
         sources |= result.store.source_closure(fact.lineage_id)
     return sorted(

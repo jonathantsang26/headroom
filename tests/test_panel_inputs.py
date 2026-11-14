@@ -121,6 +121,27 @@ def test_raw_entry_needs_url_timestamp_and_hash(snap, field, value):
     _rejects(snap, "raw:da_2025")
 
 
+STAMP = {"source": "test_cost", "source_version": "test",
+         "retrieved_at": "2026-09-25T00:00:00+00:00"}
+
+
+@pytest.mark.parametrize(
+    "table,column,declared,match",
+    [
+        ("constraint_history", "monitored_facility", True, "not supported"),
+        ("constraint_coverage", "days_covered", True, "not supported"),
+        ("constraint_history", "congestion_cost_usd", False, "not the table's stamp"),
+    ],
+)
+def test_column_sources_fail_closed(snap, table, column, declared, match):
+    manifest = _manifest(snap)
+    if declared:
+        manifest["tables"][table]["contributors"] = [STAMP]
+    manifest["tables"][table]["column_sources"] = {column: STAMP}
+    _save(snap, manifest)
+    _rejects(snap, match)
+
+
 def test_coverage_rows_may_cite_only_declared_raw_inputs(snap):
     manifest = _manifest(snap)
     manifest["tables"]["constraint_coverage"]["derived_from"] = ["raw:da_2025"]
@@ -197,6 +218,25 @@ def test_writer_validates_before_writing(tmp_path):
         write_panel_table(tmp_path, "constraint_coverage", [], stamp=stamp, derived_from=[])
     with pytest.raises(ValueError, match="Unknown panel table"):
         write_panel_table(tmp_path, "congestion", [], stamp=stamp, derived_from=["raw:x"])
+
+
+def test_writer_records_contributors_and_column_sources(tmp_path):
+    stamp = SourceStamp("synthetic_fixture", "synthetic", datetime(2026, 9, 25, tzinfo=timezone.utc))
+    cost = SourceStamp("test_cost", "test", datetime(2026, 9, 26, tzinfo=timezone.utc))
+    row = {"constraint_id": "FG", "market": "DA", "period": "2025-02", "hours_binding": 3,
+           "congestion_cost_usd": 10}
+    with pytest.raises(ValueError, match="not supported"):
+        write_panel_table(tmp_path, "constraint_history", [row], stamp=stamp,
+                          derived_from=["raw:x"], contributors=[cost],
+                          column_sources={"monitored_facility": cost})
+    assert not (tmp_path / "normalized" / "constraint_history.csv").exists()
+    write_panel_table(tmp_path, "constraint_history", [row], stamp=stamp, derived_from=["raw:x"],
+                      contributors=[cost], column_sources={"congestion_cost_usd": cost})
+    entry = _manifest(tmp_path)["tables"]["constraint_history"]
+    want = {"source": "test_cost", "source_version": "test",
+            "retrieved_at": "2026-09-26T00:00:00+00:00"}
+    assert entry["contributors"] == [want]
+    assert entry["column_sources"] == {"congestion_cost_usd": want}
 
 
 def test_failed_write_keeps_the_prior_table(tmp_path, monkeypatch):
