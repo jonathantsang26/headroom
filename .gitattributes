@@ -1,0 +1,2 @@
+# Committed snapshot fixtures are pinned by SHA256; keep their bytes exact.
+tests/fixtures/spp_synth_panel/** -text
